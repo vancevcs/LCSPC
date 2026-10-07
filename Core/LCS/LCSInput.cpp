@@ -26,6 +26,7 @@
 #include "Common/Log.h"
 #include "Core/HLE/sceCtrl.h"
 #include "Core/LCS/LCSAddresses.h"
+#include "Core/LCS/LCSChaseCam.h"
 #include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSMemory.h"
 #include "Core/LCS/LCSSettings.h"
@@ -370,7 +371,9 @@ void InputTick(const LCSState &state) {
 		}
 	}
 	g_context.store(context, std::memory_order_relaxed);
-	g_mouseDriving.store(settings.keyboardMouse && settings.mouseLook && context == kFoot,
+	// In a vehicle only the chase camera can be turned: the game's own swings back (chase-camera.md).
+	const bool mouseCamera = context == kFoot || (context == kCar && ChaseCamInstalled());
+	g_mouseDriving.store(settings.keyboardMouse && settings.mouseLook && mouseCamera,
 		std::memory_order_relaxed);
 
 	std::vector<std::pair<InputKeyCode, HeldKey>> held;
@@ -383,7 +386,7 @@ void InputTick(const LCSState &state) {
 		g_wheelDown = 0;
 		// Mouse movement that arrived while it couldn't turn anything is dropped, not saved up
 		// for the next time it can.
-		if (context != kFoot) {
+		if (!mouseCamera) {
 			g_mouseDX = 0.0f;
 			g_mouseDY = 0.0f;
 		}
@@ -397,7 +400,7 @@ void InputTick(const LCSState &state) {
 	}
 }
 
-void InputFrameWait() {
+void InputFrameBoundary() {
 	float dx, dy;
 	{
 		std::lock_guard<std::mutex> guard(g_mutex);
@@ -406,7 +409,16 @@ void InputFrameWait() {
 		g_mouseDX = 0.0f;
 		g_mouseDY = 0.0f;
 	}
-	ApplyMouseLook(g_context.load(std::memory_order_relaxed), dx, dy);
+	const InputContext context = g_context.load(std::memory_order_relaxed);
+	if (context == kCar && ChaseCamInstalled()) {
+		// The chase camera's convention: yaw counter-clockwise from above, pitch up. The mouse to
+		// the right turns the view right; away from you looks up.
+		const LCSSettings &settings = Settings();
+		const float ySign = settings.invertMouseY ? -1.0f : 1.0f;
+		ChaseCamAddLook(-dx * settings.mouseSensitivity, -dy * settings.mouseSensitivity * ySign);
+		return;
+	}
+	ApplyMouseLook(context, dx, dy);
 }
 
 void ResetInput() {

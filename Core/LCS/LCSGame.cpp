@@ -25,6 +25,7 @@
 #include "Core/MemMap.h"
 #include "Core/System.h"
 #include "Core/LCS/LCSAddresses.h"
+#include "Core/LCS/LCSChaseCam.h"
 #include "Core/LCS/LCSFrameRate.h"
 #include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSInput.h"
@@ -121,6 +122,9 @@ void NoteBootExecutable(const u8 *elf, size_t size) {
 }
 
 void Shutdown() {
+	if (g_active) {
+		RemoveChaseCam();
+	}
 	ClearState();
 	FrameRateReset();
 	ResetInput();
@@ -152,15 +156,16 @@ void Tick() {
 
 	g_tickCount++;
 	FrameRateTick();
+	InstallChaseCam();
 	UpdateSharedState();
 	InputTick(GetState());
 }
 
-void OnFrameWait(u32 returnAddress) {
-	if (!g_active || !g_baseChecked || returnAddress != kLCSFrameWaitReturn) {
+void OnFrameBoundary(u32 returnAddress) {
+	if (!g_active || !g_baseChecked || returnAddress != kLCSFrameBoundaryReturn) {
 		return;
 	}
-	InputFrameWait();
+	InputFrameBoundary();
 }
 
 bool IsActive() {

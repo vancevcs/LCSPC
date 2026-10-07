@@ -32,7 +32,9 @@
 #include "Core/HLE/sceKernelThread.h"
 #include "Core/HLE/sceRtc.h"
 #include "Core/MemMap.h"
+#include "Core/MIPS/MIPS.h"
 #include "Core/System.h"
+#include "Core/LCS/LCSGame.h"
 #include "StringUtils.h"
 
 // The time when the game started.
@@ -91,6 +93,9 @@ u32 sceKernelGetSystemTimeLow()
 
 u64 sceKernelGetSystemTimeWide()
 {
+	// Fork-specific: LCS applies the mouse here, between two game frames. Does nothing unless the
+	// LCS layer is active and the caller is the call after its frame wait.
+	LCS::OnFrameBoundary(currentMIPS->r[MIPS_REG_RA]);
 	u64 t = CoreTiming::GetGlobalTimeUsScaled();
 	VERBOSE_LOG(Log::sceKernel,"%i=sceKernelGetSystemTimeWide()",(u32)t);
 	hleEatCycles(250);

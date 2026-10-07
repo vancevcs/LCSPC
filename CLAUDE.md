@@ -48,6 +48,7 @@ Core/LCS/ (no ImGui, UI, or renderer dependencies)
   LCSSettings     PSP/SYSTEM/lcs.ini
   LCSFrameRate    60 fps (cap + millisecond carry)
   LCSInput        keyboard and mouse by context; mouse look on foot
+  LCSChaseCam     the vehicle camera, replaced inside CCamera::Process (two hooks + a program)
   LCSMips.h       encoders for programs written into PSP memory
 UI/ImDebugger/ImLCS   the "LCS" debugger window (Debug -> LCS)
 UI/LCSDevInput        dev only: LCS_KEY_PIPE scripted keys and mouse (docs/lcs/input.md "Testing")
@@ -55,8 +56,9 @@ Tools/lcsimage.py, Tools/lcsscm.py   offline EBOOT image and script-opcode map
 
 Seams: init/shutdown in `__KernelInit`/`__KernelShutdown`; fingerprint in `__KernelLoadELFFromPtr`;
 tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys and mouse in `NativeKey` /
-`NativeMouseDelta`; the frame wait in `sceDisplayWaitVblankStart`; compat flag in
-Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
+`NativeMouseDelta`; the frame boundary in `sceKernelGetSystemTimeWide`; by-address hooks in
+`Core/HLE/ReplaceTables.*`; compat flag in Core/Compatibility.* + assets/compat.ini. Full table:
+docs/lcs/architecture.md.
 
 ## Working rules
 - Measure, don't guess. Cheapest first: the game's Controls screen and GXT -> the script command
@@ -67,10 +69,13 @@ Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
   function's SECOND instruction (the first is a JIT block marker); InvalidateICache; reinstall after
   savestates.
 - Game calls: only from inside a non-blocking syscall on the main thread.
-- State the game reads and writes back every frame (the camera's angles) is written from the frame
-  wait (`LCS::OnFrameWait`), not the vblank tick, or a write can land mid-frame and be lost.
+- State the game reads and writes back every frame (the camera's angles) is written at the frame
+  boundary (`LCS::OnFrameBoundary`), not the vblank tick, or a write can land mid-frame and be lost.
+  Not in the frame wait itself: a frame that has used up the cap skips it.
+- Savestates keep plain code patches but not replacement (`HOOKENTER`) ops: re-check every tick
+  and put hooks back (chase-camera.md). Test fixtures: the pipe's `savestate` / `loadstate`.
 - Test input with `LCS_KEY_PIPE` and "Use mouse control" off; give queued lines time to run (the
-  pipe ticks at 30 Hz here). docs/lcs/input.md "Testing" has the traps.
+  pipe ticks per host frame: 30 Hz at 30 fps). docs/lcs/input.md "Testing" has the traps.
 - Only release input you pressed.
 - Verify positively: log that a thing ran; a screenshot without the subject verifies nothing.
 
@@ -81,3 +86,4 @@ Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
 | docs/lcs/architecture.md | the gate, seams, files, build lists, how to patch code | adding a hook into PPSSPP |
 | docs/lcs/frame-rate.md | 60 fps: what it patches, measurements, what's unchecked | touching CTimer or the frame wait |
 | docs/lcs/input.md | the game's layout, the bindings, key ownership, the on-foot camera takeover, testing | touching input or the camera |
+| docs/lcs/chase-camera.md | the vehicle camera: hook sites, the program, framing, savestates, the car fixture | touching the vehicle camera or adding a hook |

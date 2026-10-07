@@ -1,9 +1,10 @@
 # LCS input: keyboard and mouse
 
 `Core/LCS/LCSInput.cpp`, with the seams in `UI/NativeApp.cpp` (`NativeKey`, `NativeMouseDelta`) and
-`Core/HLE/sceDisplay.cpp` (`sceDisplayWaitVblankStart`). Settings in `PSP/SYSTEM/lcs.ini` and the
-Input tab of Debug -> LCS: `KeyboardMouse`, `MouseLook`, `MouseSensitivity` (rad per count,
-default 0.0025), `InvertMouseY`.
+`Core/HLE/sceKernelTime.cpp` (`sceKernelGetSystemTimeWide`, the frame boundary). Settings in
+`PSP/SYSTEM/lcs.ini` and the Input tab of Debug -> LCS: `KeyboardMouse`, `MouseLook`,
+`MouseSensitivity` (rad per count, default 0.0025), `InvertMouseY`, and `VehicleChaseCamera` for
+the vehicle camera (chase-camera.md).
 
 ## The game's own layout
 
@@ -96,9 +97,13 @@ ways, each measured and each switched off only while the mouse drives the on-foo
 the context isn't on foot or the camera isn't mode 4 (getting into a car was checked: the stock
 instruction and spring came back, and went out again on getting out).
 
-**Applied between frames.** The mouse is applied from the game's frame wait
-(`sceDisplayWaitVblankStart` called from `0x08ab3384`, return address `0x08ab338c`), not the vblank
-tick, so it can never land while the camera code holds Beta in a register.
+**Applied between frames.** The mouse is applied at the frame boundary: the game's
+`jal sceKernelGetSystemTimeWide` at `0x08ab3398`, right after its frame wait (return address
+`0x08ab33a0`), not the vblank tick, so it can never land while the camera code holds Beta in a
+register. The first seam was the wait's own `sceDisplayWaitVblankStart` (`0x08ab3384`), which a
+frame that has already used up the cap skips: in the trees of the first mission's park at 60 fps
+the mouse arrived 1-4 s late in bursts. The call after the loop is made every frame; measured
+there, on foot and in the car, 23-40 ms from the pipe to the camera, every step exact.
 
 **Measured (JIT, Release):** 25 x 20 counts turned exactly +1.250 rad, 25 x -20 exactly -1.250,
 25 x 4 exactly +0.250, one 400-count move +1.000, no drift at rest over 3 s, pitch 20 x 6 counts
@@ -109,16 +114,24 @@ Mouse look needs PPSSPP's **"Use mouse control"** (`UseMouse`): `NativeMouseDelt
 the LCS seam without it, and Windows' raw input only turns the left button into a key event with it
 on. It also hides the cursor over the window. Raw input arrives only while PPSSPP has focus.
 
+## Mouse look in a vehicle
+
+In a car, on a bike or in a boat the mouse turns the chase camera (`ChaseCamAddLook`), not the
+game's angles: mode 18 swings a written yaw back. chase-camera.md has all of it. With
+`VehicleChaseCamera` off the mouse does nothing in a vehicle, as before.
+
 ## Testing without the keyboard
 
 `LCS_KEY_PIPE=<file>` makes `UI/LCSDevInput.cpp` read `press`/`down`/`up`/`look`/`wait` lines
 from that file once per frame (header comment has the syntax) and feed them to `NativeKey` and
-`LCS::HandleMouseDelta`. Nothing reaches Windows. Read the result back over the debugger: the
-game's own `NewState` at `Pads[0]+0x02` shows which PSP buttons a key produced. Three traps:
+`LCS::HandleMouseDelta`; `savestate <path>` and `loadstate <path>` make and load fixtures
+(chase-camera.md "Testing" has one in a car). Nothing reaches Windows. Read the result back over
+the debugger: the game's own `NewState` at `Pads[0]+0x02` shows which PSP buttons a key produced.
+Three traps:
 
-- **The pipe runs per host frame, which is 30 Hz in this game.** 25 `look` + `wait 1` pairs take
-  1.67 s; measure after that, or the tail lands in the next measurement. Hours went into "lost"
-  mouse input that was a too-short wait.
+- **The pipe runs per host frame: 30 Hz at the game's 30 fps, 60 at 60.** 25 `look` + `wait 1`
+  pairs take 1.67 s at 30; measure after that, or the tail lands in the next measurement. Hours
+  went into "lost" mouse input that was a too-short wait.
 - **Run tests with "Use mouse control" off.** With it on, the desk's real mouse moves the camera
   whenever PPSSPP has focus, which it takes at launch. The pipe's `look` bypasses the setting.
 - **Don't minimise PPSSPP during boot.** It stalls the boot, and killing it then left
@@ -127,9 +140,6 @@ game's own `NewState` at `Pads[0]+0x02` shows which PSP buttons a key produced. 
 
 ## Not done
 
-- Mouse look in vehicles (`Process_Cam_On_A_String`, mode 18): a written yaw half-sticks and the
-  camera swings back behind the car. Not claimed there yet; VCS needed an in-frame camera
-  replacement for this (`docs/vcs/aiming.md` and `VCSChaseCam.cpp` in the VCS fork).
 - Free aim with the mouse (the game's free aim is entered with D-Down while locked on), and aiming
   in general (modes 11/28, 7/8/34/45/46).
 - Gamepads: the layer only claims keyboard and mouse; a pad goes to PPSSPP's mapper with the PSP

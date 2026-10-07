@@ -35,6 +35,9 @@ struct LCSSettings {
 	// Radians per mouse count.
 	float mouseSensitivity = 0.0025f;
 	bool invertMouseY = false;
+	// In a vehicle the mouse orbits a chase camera of the fork's own (LCSChaseCam). Off leaves the
+	// game's vehicle camera, which the mouse can't turn. Needs keyboardMouse and mouseLook.
+	bool vehicleChaseCamera = true;
 };
 
 LCSSettings &Settings();

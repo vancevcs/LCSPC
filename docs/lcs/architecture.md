@@ -31,7 +31,8 @@ NOTICE line, and Debug -> LCS shows the reason.
 | Debug -> LCS | `UI/ImDebugger/ImDebugger.cpp/.h` (menu item, draw call, `lcsOpen` ini key) | |
 | `LCS::HandleHostKey()` | `NativeKey()`, in the `passKeyThrough` branch, before `g_controlMapper.Key` | a claimed key must not also reach the mapper |
 | `LCS::HandleMouseDelta()` | `NativeMouseDelta()`, after the `bMouseControl` check, skipped while ImGui wants the mouse | mouse look only with PPSSPP's mouse control on |
-| `LCS::OnFrameWait()` | `sceDisplayWaitVblankStart()`, with `$ra` | the game's frame wait is between frames: the only safe moment to write the camera |
+| `LCS::OnFrameBoundary()` | `sceKernelGetSystemTimeWide()`, with `$ra` | the game calls it right after its frame wait, every frame: between frames, the only safe moment to write the camera. Not `sceDisplayWaitVblankStart`, which a frame that has used up the cap skips (input.md) |
+| `lcs_camera_prepare` / `lcs_camera_finish` | `Core/HLE/ReplaceTables.cpp` entries, plus `GetReplacementFuncIndexByName` / `WriteReplaceInstructionAt` | `REPFLAG_HOOKENTER` hooks installed by address, never by hash, so no other game can match them (chase-camera.md) |
 | `LCSDevKeyPipeTick()` | `NativeFrame()`, after `g_OSD.Update` | dev only, `LCS_KEY_PIPE` |
 
 ## Files
@@ -45,6 +46,7 @@ Core/LCS/            no ImGui, UI or renderer dependencies
   LCSSettings        PSP/SYSTEM/lcs.ini, loaded when the layer activates
   LCSFrameRate       60 fps: frame cap + millisecond carry, re-checked every tick (frame-rate.md)
   LCSInput           keyboard and mouse by context; mouse look on foot (input.md)
+  LCSChaseCam        the vehicle camera: two hooks and a program in CCamera::Process (chase-camera.md)
   LCSMips.h          encoders for programs written into PSP memory
 UI/ImDebugger/ImLCS  the Debug -> LCS window (state, table, input, scratchpad, the 60 fps switch)
 UI/LCSDevInput       dev only: LCS_KEY_PIPE scripted keys and mouse
@@ -53,14 +55,16 @@ Tools/lcsscm.py      script opcode -> handler address
 Tools/lcsws.py       WebSocket debugger client: read, write, watch, press
 ```
 
-Tick order: base check (first tick only) -> `FrameRateTick` -> `UpdateSharedState` ->
-`InputTick` (context, buttons, stick). The mouse is applied from `OnFrameWait`, not the tick.
+Tick order: base check (first tick only) -> `FrameRateTick` -> `InstallChaseCam` ->
+`UpdateSharedState` -> `InputTick` (context, buttons, stick). The mouse is applied from
+`OnFrameBoundary`, not the tick; the chase camera's hooks run inside the game's camera update.
 
 ## Threads
 
 `HandleHostKey` and `HandleMouseDelta` run on the UI thread and only record, under `LCSInput`'s
 mutex; the context they read is an atomic `InputTick` publishes. Everything that touches PSP memory
-or sceCtrl runs on the emu thread: `Tick`, `OnFrameWait` (an HLE syscall), and the ImGui window.
+or sceCtrl runs on the emu thread: `Tick`, `OnFrameBoundary` (an HLE syscall), the chase
+camera's hooks (replacement functions), and the ImGui window.
 
 ## Patching code
 
@@ -76,7 +80,7 @@ the guide still call it.
 
 From the vblank tick, a write can land mid-frame while the game holds the value in a register, and
 be lost when it stores its own result. Anything the game reads and writes back every frame (the
-camera's angles) is written from the frame wait instead (`OnFrameWait`). Buttons and the stick go
+camera's angles) is written at the frame boundary instead (`OnFrameBoundary`). Buttons and the stick go
 through sceCtrl, which the game samples once a frame, so the tick is fine for those.
 
 A new source file goes in all seven build files: `Core/CMakeLists.txt`, `Core/Core.vcxproj` and
@@ -86,8 +90,7 @@ A new source file goes in all seven build files: `Core/CMakeLists.txt`, `Core/Co
 
 ## Seams not added yet
 
-From the guide, added only when a feature needs them: pad axes in `NativeAxis()`, by-address
-`REPFLAG_HOOKENTER` install in `Core/HLE/ReplaceTables.*` (hooks), call hosts in
+From the guide, added only when a feature needs them: pad axes in `NativeAxis()`, call hosts in
 non-blocking syscalls (game calls), `__KernelLoadExec` (boot-time patches), `ISOFileSystem::ReadFile`
 (disc file substitution), frameskip in `sceDisplay.cpp` (only if 60 fps turns out to drop frames
 somewhere), and the renderer.

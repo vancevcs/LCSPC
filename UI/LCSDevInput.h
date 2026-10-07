@@ -26,6 +26,7 @@
 //   down KEY / up KEY
 //   look DX DY       a mouse movement in counts, straight to LCS::HandleMouseDelta
 //   wait N           N frames
+//   savestate PATH / loadstate PATH   a PPSSPP savestate, for test fixtures
 // KEY is a PPSSPP key name (W, Space, LShift, Enter, Backspace...), MOUSE1-MOUSE5, WHEELUP,
 // WHEELDOWN.
 

@@ -60,8 +60,8 @@ bool HandleMouseDelta(float dx, float dy);
 
 // From LCS::Tick, after the state is decoded: context, buttons and the stick.
 void InputTick(const LCSState &state);
-// From the game's frame wait (LCS::OnFrameWait), between frames: the mouse turns the camera.
-void InputFrameWait();
+// From the game's frame boundary (LCS::OnFrameBoundary), between frames: the mouse turns the camera.
+void InputFrameBoundary();
 // Releases everything this layer holds and forgets held keys.
 void ResetInput();
 

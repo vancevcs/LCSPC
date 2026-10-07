@@ -26,6 +26,7 @@
 #include "Core/KeyMap.h"
 #include "Core/System.h"
 #include "Core/LCS/LCSAddresses.h"
+#include "Core/LCS/LCSChaseCam.h"
 #include "Core/LCS/LCSFrameRate.h"
 #include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSInput.h"
@@ -411,6 +412,54 @@ void ImLCSWindow::DrawInput() {
 	ImGui::EndTable();
 }
 
+void ImLCSWindow::DrawCamera() {
+	LCS::LCSSettings &settings = LCS::Settings();
+	if (ImGui::Checkbox("Vehicle chase camera", &settings.vehicleChaseCamera)) {
+		LCS::SaveSettings();
+	}
+	if (!settings.keyboardMouse || !settings.mouseLook) {
+		ImGui::SameLine();
+		ImGui::TextColored(kBadColor, "needs Keyboard and mouse and Mouse look (Input tab)");
+	}
+
+	LCS::LCSChaseCamStats s;
+	LCS::ChaseCamGetStats(&s);
+	ImGui::Text("Status: %s", s.status);
+	if (s.block) {
+		ImGui::SameLine();
+		ImGui::Text("(block %08x)", s.block);
+	}
+	ImGui::Text("Owning: %s   mode %d   frames %llu / %llu owned", s.owning ? "yes" : "no", s.mode,
+		(unsigned long long)s.frames, (unsigned long long)s.ownedFrames);
+	ImGui::Text("Yaw %.3f   pitch %.3f   since look %.1f s%s", s.yaw, s.pitch, s.sinceLook,
+		s.glancing ? "   glancing" : "");
+	ImGui::Text("Distance: game %.2f   want %.2f   allowed %.2f   now %.2f", s.gameDistance,
+		s.wantDistance, s.allowedDistance, s.distance);
+	ImGui::Text("Rays %d, hits %d   clearance %.2f   near %.3f", s.rays, s.hits, s.clearance, s.nearClip);
+	ImGui::Text("Pivot %.2f %.2f %.2f   box %.2f long%s   speed %.1f", s.pivot[0], s.pivot[1], s.pivot[2],
+		s.boxLength, s.boxFromGame ? "" : " (default)", s.speed);
+	ImGui::Text("Blend in %.2f%s", s.blendIn, s.blendingOut ? "   blending out" : "");
+
+	ImGui::Separator();
+	LCS::LCSChaseCamTuning &t = LCS::ChaseCamTuning();
+	ImGui::PushItemWidth(200.0f);
+	ImGui::SliderFloat("Distance scale", &t.distanceScale, 0.5f, 2.0f);
+	ImGui::SliderFloat("Pivot (of box top)", &t.pivotScale, 0.5f, 2.0f);
+	ImGui::SliderFloat("Rest pitch", &t.restPitch, -0.6f, 0.3f);
+	ImGui::SliderFloat("Orbit up limit", &t.orbitUp, 0.0f, 1.2f);
+	ImGui::Checkbox("Recentre", &t.recentre);
+	ImGui::SameLine();
+	ImGui::Checkbox("Glances", &t.glances);
+	ImGui::SameLine();
+	ImGui::Checkbox("Near clip", &t.nearClip);
+	ImGui::SameLine();
+	ImGui::Checkbox("Keep shake", &t.keepShake);
+	ImGui::SliderFloat("Recentre delay", &t.recentreDelay, 0.0f, 5.0f, "%.1f s");
+	ImGui::SliderInt("Rays", &t.rays, 0, 5);
+	ImGui::PopItemWidth();
+	ImGui::TextDisabled("Tuning is for this session only.");
+}
+
 void ImLCSWindow::Draw(ImConfig &cfg) {
 	ImGui::SetNextWindowSize(ImVec2(600, 480), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("LCS", &cfg.lcsOpen)) {
@@ -432,6 +481,10 @@ void ImLCSWindow::Draw(ImConfig &cfg) {
 		}
 		if (ImGui::BeginTabItem("Input")) {
 			DrawInput();
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Camera")) {
+			DrawCamera();
 			ImGui::EndTabItem();
 		}
 		if (ImGui::BeginTabItem("Scratchpad")) {

@@ -70,6 +70,12 @@ void Replacement_Shutdown();
 
 int GetNumReplacementFuncs();
 std::vector<int> GetReplacementFuncIndexes(u64 hash, int funcSize);
+
+// Fork-specific: a replacement looked up by name and installed at a known address, for a hook
+// on one instruction of one known build (the LCS layer). The hash path needs MIPSAnalyst to have
+// found and hashed a whole function first.
+int GetReplacementFuncIndexByName(const char *name);
+bool WriteReplaceInstructionAt(u32 address, int index);
 const ReplacementTableEntry *GetReplacementFunc(size_t index);
 
 void WriteReplaceInstructions(u32 address, u64 hash, int size);

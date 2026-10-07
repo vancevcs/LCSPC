@@ -31,6 +31,7 @@
 #include "Common/System/NativeApp.h"
 #include "Core/KeyMap.h"
 #include "Core/LCS/LCSInput.h"
+#include "Core/SaveState.h"
 #include "UI/LCSDevInput.h"
 
 static bool ParseDevKey(const std::string &name, InputKeyCode *code, InputDeviceID *device) {
@@ -94,6 +95,22 @@ void LCSDevKeyPipeTick() {
 		if (verb == "wait") {
 			wait = atoi(arg.c_str());
 			return;
+		}
+		if (verb == "savestate" || verb == "loadstate") {
+			// Test fixtures: a state at a known place (in a car, at a wall) instead of a boot and a
+			// scripted walk. Queued like a hotkey, so it lands between frames.
+			const Path file(arg);
+			const bool save = verb == "savestate";
+			auto done = [save, arg](SaveState::Status status, std::string_view message, std::string_view) {
+				NOTICE_LOG(Log::System, "LCS_KEY_PIPE: %s %s - %s", save ? "savestate" : "loadstate", arg.c_str(),
+					status == SaveState::Status::SUCCESS ? "done" : std::string(message).c_str());
+			};
+			if (save) {
+				SaveState::Save(file, -1, done);
+			} else {
+				SaveState::Load(file, -1, done);
+			}
+			continue;
 		}
 		if (verb == "look") {
 			// Straight to the LCS layer rather than through NativeMouseDelta, so a test runs with

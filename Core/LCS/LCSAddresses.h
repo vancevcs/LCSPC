@@ -72,13 +72,15 @@ struct LCSCodeWord {
 // Pattern (ThirteenAG, GTALCS.PPSSPP.WidescreenFix, MIT): 02 00 84 2C ? ? ? ? 00 00 00 00 ? ? ? ? 00 00 00 00
 inline constexpr LCSCodeWord kLCSFrameCap = { 0x08AB3378, 0x2C840002, 0x2C840001 };
 
-// The return address of the frame wait's `jal sceDisplayWaitVblankStart` (0x08ab3384). That call
-// comes once the frame's logic is done and before the next one starts, which makes it the one
+// The return address of `jal sceKernelGetSystemTimeWide` at 0x08ab3398, the first call after the
+// frame wait. The frame's logic is done and the next one has not started, which makes it the one
 // moment the camera's angles can be written without the game holding them in a register: written
-// from the vblank tick instead, small mouse moves were lost under the JIT (exact in the
-// interpreter, whose events land elsewhere). Other callers of the syscall (loading, other threads)
-// are told apart by this address.
-inline constexpr u32 kLCSFrameWaitReturn = 0x08AB338C;
+// from the vblank tick instead, small mouse moves were lost under the JIT. Every frame reaches it.
+// The wait's own `jal sceDisplayWaitVblankStart` (0x08ab3384, the first seam) does not: a frame
+// that has already used up the cap skips the loop, and in a heavy scene at 60 fps most did, so
+// mouse look arrived seconds late in bursts. Other callers of the syscall are told apart by this
+// address.
+inline constexpr u32 kLCSFrameBoundaryReturn = 0x08AB33A0;
 
 // The millisecond carry in CTimer::Update (0x0891b328). The game converts each frame's delta to
 // whole milliseconds and drops the fraction, so its clock runs at 989 ms a second at 30 fps and 959
@@ -165,6 +167,54 @@ inline constexpr u32 kLCSCamBetaSpeedOffset = 0xd0;
 // from the stock run, no drift at rest). Taken out only while the mouse drives the on-foot camera;
 // the cost is the auto-swing behind a walking player, which a PC mouse camera doesn't do anyway.
 inline constexpr LCSCodeWord kLCSFollowPedYawCorrection = { 0x088F2ACC, 0x460D6300, 0x00000000 };
+
+// --- The vehicle chase camera (LCSChaseCam, docs/lcs/chase-camera.md) ---
+//
+// CCamera::Process (0x08900c78) holds this frame's camera in three stack vectors from 0x08900d1c
+// to its end: Source at sp+0x70, Front at sp+0x80 ($fp) and Up at sp+0x90 ($s7). They are loaded
+// from Cams[ActiveCam] at 0x089012cc: Front from CCam+0x1a0 (kLCSCamFrontOffset), Up from +0x1d0,
+// Source from +0x1b0. The matrix takes Front as its +0x10 row and Up as +0x20 (0x0890232c). Front
+// is always Source + 0x10, so both hooks find all three from $fp and $s7, whatever $sp is.
+//
+// The prepare hook: the first instruction after the game's own camera clip and near-clip call,
+// `lwc1 $f12, 0x1be8($s0)` (the shake amount). A branch target, so the JIT starts a block there.
+inline constexpr u32 kLCSCamPreShake = 0x08902174;
+inline constexpr u32 kLCSCamPreShakeOp = 0xC60C1BE8;
+// `jal 0x088ea388` (cross product, a0 = sp+0x40 out, a1 = Up, a2 = Front), the first step of
+// building TheCamera's matrix from the three vectors. Pointed at the chase camera's program.
+inline constexpr u32 kLCSCamBasisCall = 0x08902318;
+inline constexpr u32 kLCSCamBasisCallOp = 0x0E23A8E2;
+inline constexpr u32 kLCSCamBasisFunc = 0x088EA388;
+// CWorld::ProcessLineOfSight: (start, end, CColPoint &, CEntity *&, buildings, vehicles, peds,
+// objects, dummies, ignoreSeeThrough, ignoreSomeObjects, ...; the last five on the stack), the
+// same 13 arguments as VCS's. The game's camera clip calls it at kLCSCamClipLosCall with
+// (1, 0, 0, 1, 0, 1, 1, 0, 0); that call's word is the install's check that this is the code.
+inline constexpr u32 kLCSProcessLineOfSight = 0x088C68F4;
+inline constexpr u32 kLCSCamClipLosCall = 0x08902128;
+inline constexpr u32 kLCSCamClipLosCallOp = 0x0E231A3D;
+// RwCameraSetNearClipPlane(RwCamera *, float in $f12), checked by its second instruction
+// (`sw $s0, 0x10($sp)`). The near plane is RwCamera+0x80. Scene.camera, the RwCamera the frame is
+// rendered with, is at kLCSSceneCameraPtr (CCamera::Process passes [Scene+4]).
+inline constexpr u32 kLCSRwCameraSetNearClip = 0x0887352C;
+inline constexpr u32 kLCSRwCameraSetNearClipOp2 = 0xAFB00010;
+inline constexpr u32 kLCSRwCameraNearOffset = 0x80;
+inline constexpr u32 kLCSSceneCameraPtr = 0x08B5E204;
+// TheCamera's car zoom level: 1, 2 or 3 as Select cycles the CamOnAString distances.
+inline constexpr u32 kLCSCamCarZoomOffset = 0xcc;
+
+// CEntity: its matrix (right, forward, up, position rows of four floats) and model index (s16).
+inline constexpr u32 kLCSEntityRightOffset = 0x00;
+inline constexpr u32 kLCSEntityForwardOffset = 0x10;
+inline constexpr u32 kLCSEntityUpOffset = 0x20;
+inline constexpr u32 kLCSEntityPositionOffset = 0x30;
+inline constexpr u32 kLCSEntityModelOffset = 0x58;
+// CModelInfo::ms_modelInfoPtrs (a pointer to the array) and its length. CBaseModelInfo's
+// CColModel * is at +0x14; a CColModel's bounding box at +0x10 (min) and +0x20 (max).
+inline constexpr u32 kLCSModelInfoTablePtr = 0x08B4D3BC;
+inline constexpr u32 kLCSModelInfoCountAddr = 0x08B5E140;
+inline constexpr u32 kLCSModelInfoColModelOffset = 0x14;
+inline constexpr u32 kLCSColModelBoxMinOffset = 0x10;
+inline constexpr u32 kLCSColModelBoxMaxOffset = 0x20;
 
 // CVehicle::m_vehType. FindPlayerTrain (0x089d5860) compares it with 2.
 inline constexpr u32 kLCSVehicleTypeOffset = 0x344;

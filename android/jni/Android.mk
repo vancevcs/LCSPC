@@ -814,6 +814,7 @@ EXEC_AND_LIB_FILES := \
   $(SRC)/Core/LCS/LCSGame.cpp \
   $(SRC)/Core/LCS/LCSMemory.cpp \
   $(SRC)/Core/LCS/LCSState.cpp \
+  $(SRC)/Core/LCS/LCSChaseCam.cpp \
   $(SRC)/Core/LCS/LCSInput.cpp \
   $(SRC)/Core/LCS/LCSFrameRate.cpp \
   $(SRC)/Core/LCS/LCSSettings.cpp \

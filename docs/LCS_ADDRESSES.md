@@ -225,7 +225,10 @@ function then enqueues the frame's display list (`sceGeListEnQueue` at `0x08ab34
 | `Alpha` (pitch) | `CCam+0xbc` | `0x08b835ec` | `Process_FollowPed`: clamped between two limits, rate at `+0xc0` |
 | `FOV` | `CCam+0xc4` | `0x08b835f4` | `Process_FollowPed`: look rates scale by `FOV / 80` |
 | `Beta` (yaw) | `CCam+0xcc` | `0x08b835fc` | `Process_FollowPed`: wrapped to [0, 2PI), rate at `+0xd0` |
-| `Front` | `CCam+0x1a0` | | written from Alpha/Beta at the end of `Process_FollowPed` |
+| `Front` | `CCam+0x1a0` | | written from Alpha/Beta at the end of `Process_FollowPed`; `CCamera::Process` loads it into `sp+0x80` (`$fp`) |
+| `Source`, `Up` | `CCam+0x1b0`, `CCam+0x1d0` | | loaded by `CCamera::Process` at `0x089012cc` into `sp+0x70` and `sp+0x90` (`$s7`) |
+| car zoom | `TheCamera+0xcc` (float) | `0x08b8346c` | 1, 2, 3 as Select cycles the car distances |
+| TheCamera's matrix | `TheCamera+0x00` | | right `+0`, Front `+0x10`, Up `+0x20`, Source `+0x30`, copied from the three stack vectors at `0x0890232c` |
 | `PlayerWeaponMode.Mode` (s16) | `TheCamera+0x954` | `0x08b83cf4` | `CCamera::Using1stPersonWeaponMode` (`0x088ee37c`) |
 
 **Modes** (from `CCam::Process`'s jump table; names are III's, which the numbering follows):
@@ -293,6 +296,12 @@ Not yet checked: `ActiveCam` ever being 1.
 | `CCam::Process` | `0x088efc44` (switch at `0x088f0098`) | | the 46-way switch on `Mode`; one caller, `0x08900fac` |
 | `MainMemoryManager` / `StreamingHeap` setup | `0x08aa4af8` / `0x08a0b794` | | `sceKernelMaxFreeMemSize` callers that pass the result to `sceKernelCreateFpl` |
 | `cAudioManager::Service` | `0x08a9a5e4` | | ThirteenAG: `14 00 BF AF ? ? ? ? 25 80 80 00 0C 00 04 92`, -8 |
+| `CCamera::Process` | `0x08900c78` | | calls `CCam::Process` (`0x08900fac`); keeps Source/Front/Up at `sp+0x70/0x80/0x90` |
+| chase camera: prepare hook | `0x08902174` | `c60c1be8` `lwc1 f12,0x1be8(s0)` | after the camera clip's LOS call (`0x08902128`, `0e231a3d`) and near-clip call; reads the shake |
+| chase camera: matrix build | `0x08902318` | `0e23a8e2` `jal 0x088ea388` | the cross product (a0 out `sp+0x40`, a1 Up, a2 Front) that starts the matrix |
+| `CWorld::ProcessLineOfSight` | `0x088c68f4` | 2nd: `310800ff` | the camera clip's call: (start, end, colpoint, entity, 1, 0, 0, 1, 0, 1, 1, 0, 0) |
+| `RwCameraSetNearClipPlane` | `0x0887352c` | 2nd: `afb00010` | `CCamera::Process` sets 0.05 through it in the clip path; near is `RwCamera+0x80`; `Scene.camera` is `0x08b5e204` |
+| model info table | `[0x08b4d3bc]`, count `0x08b5e140` | | `CBaseModelInfo *` per model; `CColModel *` at `+0x14`, its box at `+0x10`/`+0x20`; `CEntity` model index at `+0x58` (s16) |
 
 ## ThirteenAG's patterns against this build
 
@@ -332,10 +341,15 @@ finds nothing at the absolute address. Live: 0 in play, 1 with the pause menu up
 again after a second Start (and after Backspace -> Circle through the input layer). The game frame
 counter keeps advancing while it is up.
 
-### The frame wait's return address `0x08ab338c`
+### The frame boundary's return address `0x08ab33a0`
 
-The `jal sceDisplayWaitVblankStart` at `0x08ab3384` in the frame wait: the input layer writes the
-camera only when the syscall is called from here (`kLCSFrameWaitReturn`).
+The `jal sceKernelGetSystemTimeWide` at `0x08ab3398`, the first call after the frame wait loop:
+the input layer writes the camera only when the syscall is called from here
+(`kLCSFrameBoundaryReturn`). It replaced the wait's own `jal sceDisplayWaitVblankStart`
+(`0x08ab3384`, return `0x08ab338c`), which the loop skips whenever the frame has already used up the
+cap: `0x08ab3378` tests the vblank count before the first call. Stubs named live with the
+debugger's `memory.disasm`: `0x08b0b8cc` sceDisplayWaitVblankStart, `0x08b0bbc4`
+sceKernelGetSystemTimeWide, `0x08b0baec` sceKernelSysClock2USecWide.
 
 ## Not found yet
 

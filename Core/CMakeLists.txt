@@ -707,6 +707,8 @@ add_library(Core STATIC
 	LCS/LCSMips.h
 	LCS/LCSState.cpp
 	LCS/LCSState.h
+	LCS/LCSChaseCam.cpp
+	LCS/LCSChaseCam.h
 	LCS/LCSInput.cpp
 	LCS/LCSInput.h
 	LCS/LCSFrameRate.cpp
