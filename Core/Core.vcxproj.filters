@@ -384,6 +384,9 @@
     <ClCompile Include="LCS\LCSState.cpp">
       <Filter>LCS</Filter>
     </ClCompile>
+    <ClCompile Include="LCS\LCSInput.cpp">
+      <Filter>LCS</Filter>
+    </ClCompile>
     <ClCompile Include="LCS\LCSFrameRate.cpp">
       <Filter>LCS</Filter>
     </ClCompile>
@@ -1744,6 +1747,9 @@
       <Filter>LCS</Filter>
     </ClInclude>
     <ClInclude Include="LCS\LCSState.h">
+      <Filter>LCS</Filter>
+    </ClInclude>
+    <ClInclude Include="LCS\LCSInput.h">
       <Filter>LCS</Filter>
     </ClInclude>
     <ClInclude Include="LCS\LCSFrameRate.h">

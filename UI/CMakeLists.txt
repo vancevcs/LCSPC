@@ -39,6 +39,8 @@ list(APPEND UISource
 	DebugOverlay.h
 	DevScreens.cpp
 	DevScreens.h
+	LCSDevInput.cpp
+	LCSDevInput.h
 	DisplayLayoutScreen.cpp
 	DisplayLayoutScreen.h
 	EmuScreen.h

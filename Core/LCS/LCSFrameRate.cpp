@@ -20,6 +20,7 @@
 #include "Core/MIPS/MIPS.h"
 #include "Core/LCS/LCSAddresses.h"
 #include "Core/LCS/LCSFrameRate.h"
+#include "Core/LCS/LCSMemory.h"
 #include "Core/LCS/LCSSettings.h"
 
 namespace LCS {
@@ -34,34 +35,6 @@ enum class Reported {
 };
 static Reported g_reported = Reported::At30;
 
-enum class WordState {
-	Stock,
-	Patched,
-	Foreign,   // Neither: another build, code not loaded yet, or someone else's patch.
-};
-
-static WordState ReadWord(const LCSCodeWord &word) {
-	if (!Memory::IsValid4AlignedAddress(word.address)) {
-		return WordState::Foreign;
-	}
-	// Read_Instruction sees through a JIT block marker.
-	const u32 op = Memory::Read_Instruction(word.address, true).encoding;
-	return op == word.stock ? WordState::Stock : op == word.patched ? WordState::Patched : WordState::Foreign;
-}
-
-// Puts one word into the asked-for form. The caller has already checked it isn't Foreign.
-// Invalidating immediately puts the game's own word back over any block marker, so the raw read
-// and write below see code rather than a marker. Tick runs between blocks (from the vblank event),
-// so no block is executing. The deferred invalidate after the write is belt and braces.
-static void WriteWord(const LCSCodeWord &word, bool patched) {
-	const u32 target = patched ? word.patched : word.stock;
-	currentMIPS->InvalidateICacheRangeImmediate(word.address, 4);
-	if (Memory::ReadUnchecked_U32(word.address) != target) {
-		Memory::WriteUnchecked_U32(target, word.address);
-		currentMIPS->InvalidateICacheRangeDeferred(word.address, 4);
-	}
-}
-
 void FrameRateTick() {
 	if (!currentMIPS) {
 		return;
@@ -73,10 +46,10 @@ void FrameRateTick() {
 	bool foreign = false;
 	bool changes = false;
 	auto check = [&](const LCSCodeWord &word) {
-		const WordState state = ReadWord(word);
-		if (state == WordState::Foreign) {
+		const CodeWordState state = ReadCodeWord(word);
+		if (state == CodeWordState::Foreign) {
 			foreign = true;
-		} else if ((state == WordState::Patched) != want) {
+		} else if ((state == CodeWordState::Patched) != want) {
 			changes = true;
 		}
 	};
@@ -86,9 +59,9 @@ void FrameRateTick() {
 	}
 
 	if (!foreign && changes) {
-		WriteWord(kLCSFrameCap, want);
+		SetCodeWord(kLCSFrameCap, want);
 		for (const LCSCodeWord &word : kLCSTimerCarry) {
-			WriteWord(word, want);
+			SetCodeWord(word, want);
 		}
 		if (want) {
 			Memory::WriteUnchecked_U32(0, kLCSTimerRemainder);

@@ -27,6 +27,7 @@
 #include "Core/LCS/LCSAddresses.h"
 #include "Core/LCS/LCSFrameRate.h"
 #include "Core/LCS/LCSGame.h"
+#include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSSettings.h"
 #include "Core/LCS/LCSState.h"
 
@@ -58,6 +59,7 @@ void Init() {
 	g_tickCount = 0;
 	ClearState();
 	FrameRateReset();
+	ResetInput();
 
 	g_discID = g_paramSFO.GetDiscID();
 	g_discVersion = g_paramSFO.GetValueString("DISC_VERSION");
@@ -121,6 +123,7 @@ void NoteBootExecutable(const u8 *elf, size_t size) {
 void Shutdown() {
 	ClearState();
 	FrameRateReset();
+	ResetInput();
 	g_candidate = false;
 	g_active = false;
 	g_baseChecked = false;
@@ -150,6 +153,14 @@ void Tick() {
 	g_tickCount++;
 	FrameRateTick();
 	UpdateSharedState();
+	InputTick(GetState());
+}
+
+void OnFrameWait(u32 returnAddress) {
+	if (!g_active || !g_baseChecked || returnAddress != kLCSFrameWaitReturn) {
+		return;
+	}
+	InputFrameWait();
 }
 
 bool IsActive() {

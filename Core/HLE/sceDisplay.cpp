@@ -1036,6 +1036,9 @@ static void __DisplayWaitForVblanksCB(const char *reason, int vblanks) {
 }
 
 static int sceDisplayWaitVblankStart() {
+	// Fork-specific: LCS applies the mouse here, between two game frames. Does nothing unless the
+	// LCS layer is active and the caller is its frame wait.
+	LCS::OnFrameWait(currentMIPS->r[MIPS_REG_RA]);
 	__DisplayWaitForVblanks("vblank start waited", 1);
 	return hleLogDebug(Log::sceDisplay, 0);
 }

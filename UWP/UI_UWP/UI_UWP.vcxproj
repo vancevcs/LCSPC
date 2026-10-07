@@ -97,6 +97,7 @@
     <ClInclude Include="..\..\UI\DebugOverlay.h" />
     <ClInclude Include="..\..\UI\DeveloperToolsScreen.h" />
     <ClInclude Include="..\..\UI\DevScreens.h" />
+    <ClInclude Include="..\..\UI\LCSDevInput.h" />
     <ClInclude Include="..\..\UI\DiscordIntegration.h" />
     <ClInclude Include="..\..\UI\DisplayLayoutScreen.h" />
     <ClInclude Include="..\..\UI\DriverManagerScreen.h" />
@@ -159,6 +160,7 @@
     <ClCompile Include="..\..\UI\DebugOverlay.cpp" />
     <ClCompile Include="..\..\UI\DeveloperToolsScreen.cpp" />
     <ClCompile Include="..\..\UI\DevScreens.cpp" />
+    <ClCompile Include="..\..\UI\LCSDevInput.cpp" />
     <ClCompile Include="..\..\UI\DiscordIntegration.cpp" />
     <ClCompile Include="..\..\UI\DisplayLayoutScreen.cpp" />
     <ClCompile Include="..\..\UI\DriverManagerScreen.cpp" />

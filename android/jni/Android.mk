@@ -814,6 +814,7 @@ EXEC_AND_LIB_FILES := \
   $(SRC)/Core/LCS/LCSGame.cpp \
   $(SRC)/Core/LCS/LCSMemory.cpp \
   $(SRC)/Core/LCS/LCSState.cpp \
+  $(SRC)/Core/LCS/LCSInput.cpp \
   $(SRC)/Core/LCS/LCSFrameRate.cpp \
   $(SRC)/Core/LCS/LCSSettings.cpp \
   $(SRC)/Core/Util/KL4E.cpp \
@@ -960,6 +961,7 @@ LOCAL_SRC_FILES := \
   $(SRC)/UI/ChatScreen.cpp \
   $(SRC)/UI/DebugOverlay.cpp \
   $(SRC)/UI/DevScreens.cpp \
+  $(SRC)/UI/LCSDevInput.cpp \
   $(SRC)/UI/DriverManagerScreen.cpp \
   $(SRC)/UI/DisplayLayoutScreen.cpp \
   $(SRC)/UI/EmuScreen.cpp \

@@ -40,7 +40,13 @@ void LoadSettings() {
 	ini.Load(SettingsPath());
 	const Section *section = ini.GetOrCreateSection("Settings");
 	section->Get("FrameRate60", &g_settings.frameRate60);
-	NOTICE_LOG(Log::System, "LCS: settings loaded (FrameRate60 = %s)", g_settings.frameRate60 ? "true" : "false");
+	section->Get("KeyboardMouse", &g_settings.keyboardMouse);
+	section->Get("MouseLook", &g_settings.mouseLook);
+	section->Get("MouseSensitivity", &g_settings.mouseSensitivity);
+	section->Get("InvertMouseY", &g_settings.invertMouseY);
+	NOTICE_LOG(Log::System, "LCS: settings loaded (FrameRate60 = %s, KeyboardMouse = %s, MouseLook = %s, MouseSensitivity = %g)",
+		g_settings.frameRate60 ? "true" : "false", g_settings.keyboardMouse ? "true" : "false",
+		g_settings.mouseLook ? "true" : "false", g_settings.mouseSensitivity);
 }
 
 void SaveSettings() {
@@ -48,6 +54,10 @@ void SaveSettings() {
 	ini.Load(SettingsPath());
 	Section *section = ini.GetOrCreateSection("Settings");
 	section->Set("FrameRate60", g_settings.frameRate60);
+	section->Set("KeyboardMouse", g_settings.keyboardMouse);
+	section->Set("MouseLook", g_settings.mouseLook);
+	section->Set("MouseSensitivity", g_settings.mouseSensitivity);
+	section->Set("InvertMouseY", g_settings.invertMouseY);
 	if (!ini.Save(SettingsPath())) {
 		ERROR_LOG(Log::System, "LCS: could not write %s", SettingsPath().c_str());
 	}

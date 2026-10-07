@@ -29,6 +29,10 @@ NOTICE line, and Debug -> LCS shows the reason.
 | `LCS::Shutdown()` | `__KernelShutdown()`, before `__CtrlShutdown` | so held buttons can be released while sceCtrl is alive |
 | compat flag | `Core/Compatibility.h/.cpp`, `assets/compat.ini` | |
 | Debug -> LCS | `UI/ImDebugger/ImDebugger.cpp/.h` (menu item, draw call, `lcsOpen` ini key) | |
+| `LCS::HandleHostKey()` | `NativeKey()`, in the `passKeyThrough` branch, before `g_controlMapper.Key` | a claimed key must not also reach the mapper |
+| `LCS::HandleMouseDelta()` | `NativeMouseDelta()`, after the `bMouseControl` check, skipped while ImGui wants the mouse | mouse look only with PPSSPP's mouse control on |
+| `LCS::OnFrameWait()` | `sceDisplayWaitVblankStart()`, with `$ra` | the game's frame wait is between frames: the only safe moment to write the camera |
+| `LCSDevKeyPipeTick()` | `NativeFrame()`, after `g_OSD.Update` | dev only, `LCS_KEY_PIPE` |
 
 ## Files
 
@@ -40,23 +44,40 @@ Core/LCS/            no ImGui, UI or renderer dependencies
   LCSGame            lifecycle and tick: the only entry point the rest of PPSSPP calls
   LCSSettings        PSP/SYSTEM/lcs.ini, loaded when the layer activates
   LCSFrameRate       60 fps: frame cap + millisecond carry, re-checked every tick (frame-rate.md)
+  LCSInput           keyboard and mouse by context; mouse look on foot (input.md)
   LCSMips.h          encoders for programs written into PSP memory
-UI/ImDebugger/ImLCS  the Debug -> LCS window (state, table, scratchpad, the 60 fps switch)
+UI/ImDebugger/ImLCS  the Debug -> LCS window (state, table, input, scratchpad, the 60 fps switch)
+UI/LCSDevInput       dev only: LCS_KEY_PIPE scripted keys and mouse
 Tools/lcsimage.py    the EBOOT relocated into a RAM image: find, disasm, callers, xref
 Tools/lcsscm.py      script opcode -> handler address
 Tools/lcsws.py       WebSocket debugger client: read, write, watch, press
 ```
 
-Tick order: base check (first tick only) -> `FrameRateTick` -> `UpdateSharedState`.
+Tick order: base check (first tick only) -> `FrameRateTick` -> `UpdateSharedState` ->
+`InputTick` (context, buttons, stick). The mouse is applied from `OnFrameWait`, not the tick.
+
+## Threads
+
+`HandleHostKey` and `HandleMouseDelta` run on the UI thread and only record, under `LCSInput`'s
+mutex; the context they read is an atomic `InputTick` publishes. Everything that touches PSP memory
+or sceCtrl runs on the emu thread: `Tick`, `OnFrameWait` (an HLE syscall), and the ImGui window.
 
 ## Patching code
 
-`LCSFrameRate.cpp` has the pattern every code patch should follow until a second user justifies a
-shared helper: check every word of a set through `Memory::Read_Instruction` (it sees through JIT
-block markers) and write none unless all hold either the game's op or ours; to write,
-`InvalidateICacheRangeImmediate` first (restores the original op over a marker), then the raw
-read/write, then `InvalidateICacheRangeDeferred`. Upstream renamed `InvalidateICache`, which the VCS
-fork and the guide still call it.
+`ReadCodeWord` / `SetCodeWord` in `LCSMemory` are the one way to change an instruction: read
+through `Memory::Read_Instruction` (it sees through JIT block markers), never write a word that
+holds neither the game's op nor ours, and to write, `InvalidateICacheRangeImmediate` first
+(restores the original op over a marker), then the raw read/write, then
+`InvalidateICacheRangeDeferred`. A set of words that only works together (the frame rate's six) is
+checked in full before any is written. Upstream renamed `InvalidateICache`, which the VCS fork and
+the guide still call it.
+
+## When to write game state
+
+From the vblank tick, a write can land mid-frame while the game holds the value in a register, and
+be lost when it stores its own result. Anything the game reads and writes back every frame (the
+camera's angles) is written from the frame wait instead (`OnFrameWait`). Buttons and the stick go
+through sceCtrl, which the game samples once a frame, so the tick is fine for those.
 
 A new source file goes in all seven build files: `Core/CMakeLists.txt`, `Core/Core.vcxproj` and
 `.filters`, `UWP/CoreUWP/CoreUWP.vcxproj` and `.filters`, `android/jni/Android.mk`,
@@ -65,8 +86,8 @@ A new source file goes in all seven build files: `Core/CMakeLists.txt`, `Core/Co
 
 ## Seams not added yet
 
-From the guide, added only when a feature needs them: host keys / axes / mouse in `UI/NativeApp.cpp`
-(input), by-address `REPFLAG_HOOKENTER` install in `Core/HLE/ReplaceTables.*` (hooks), call hosts in
+From the guide, added only when a feature needs them: pad axes in `NativeAxis()`, by-address
+`REPFLAG_HOOKENTER` install in `Core/HLE/ReplaceTables.*` (hooks), call hosts in
 non-blocking syscalls (game calls), `__KernelLoadExec` (boot-time patches), `ISOFileSystem::ReadFile`
 (disc file substitution), frameskip in `sceDisplay.cpp` (only if 60 fps turns out to drop frames
 somewhere), and the renderer.

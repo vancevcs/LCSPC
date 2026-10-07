@@ -18,12 +18,17 @@
 #include <cstdlib>
 #include <cstring>
 #include <optional>
+#include <string>
 
 #include "ext/imgui/imgui.h"
+#include "Core/Config.h"
+#include "Core/HLE/sceCtrl.h"
+#include "Core/KeyMap.h"
 #include "Core/System.h"
 #include "Core/LCS/LCSAddresses.h"
 #include "Core/LCS/LCSFrameRate.h"
 #include "Core/LCS/LCSGame.h"
+#include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSMemory.h"
 #include "Core/LCS/LCSSettings.h"
 #include "Core/LCS/LCSState.h"
@@ -337,6 +342,75 @@ void ImLCSWindow::DrawScratchpad() {
 	}
 }
 
+static std::string ButtonNames(u32 mask) {
+	static const struct { u32 bit; const char *name; } kNames[] = {
+		{ CTRL_CROSS, "Cross" }, { CTRL_CIRCLE, "Circle" }, { CTRL_SQUARE, "Square" }, { CTRL_TRIANGLE, "Triangle" },
+		{ CTRL_LTRIGGER, "L" }, { CTRL_RTRIGGER, "R" }, { CTRL_UP, "Up" }, { CTRL_DOWN, "Down" },
+		{ CTRL_LEFT, "Left" }, { CTRL_RIGHT, "Right" }, { CTRL_START, "Start" }, { CTRL_SELECT, "Select" },
+	};
+	std::string out;
+	for (const auto &n : kNames) {
+		if (mask & n.bit) {
+			if (!out.empty()) {
+				out += " + ";
+			}
+			out += n.name;
+		}
+	}
+	return out.empty() ? "-" : out;
+}
+
+void ImLCSWindow::DrawInput() {
+	LCS::LCSSettings &settings = LCS::Settings();
+	bool changed = false;
+	changed |= ImGui::Checkbox("Keyboard and mouse", &settings.keyboardMouse);
+	ImGui::SameLine();
+	changed |= ImGui::Checkbox("Mouse look", &settings.mouseLook);
+	ImGui::SameLine();
+	changed |= ImGui::Checkbox("Invert mouse Y", &settings.invertMouseY);
+	ImGui::SetNextItemWidth(200.0f);
+	changed |= ImGui::SliderFloat("Mouse sensitivity", &settings.mouseSensitivity, 0.0005f, 0.01f, "%.4f rad/count");
+	if (changed) {
+		LCS::SaveSettings();
+	}
+	if (settings.mouseLook && !g_Config.bMouseControl) {
+		ImGui::TextColored(kBadColor, "PPSSPP's \"Use mouse control\" is off: no mouse look or left click.");
+	}
+
+	ImGui::Separator();
+	ImGui::Text("Context: %s", LCS::InputContextName(LCS::CurrentInputContext()));
+	ImGui::Text("Holding: %s", ButtonNames(LCS::AppliedButtons()).c_str());
+	ImGui::Text("On-foot pitch spring: %s", LCS::MouseLookEngaged() ? "off (mouse look)" : "stock");
+
+	ImGui::Separator();
+	if (!ImGui::BeginTable("lcsbindings", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersH | ImGuiTableFlags_ScrollY)) {
+		return;
+	}
+	ImGui::TableSetupColumn("Context", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+	ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+	ImGui::TableSetupColumn("Does");
+	ImGui::TableHeadersRow();
+	ImGui::TableNextRow();
+	ImGui::TableNextColumn(); ImGui::TextUnformatted("on foot");
+	ImGui::TableNextColumn(); ImGui::TextUnformatted("W A S D");
+	ImGui::TableNextColumn(); ImGui::TextUnformatted("Move (the stick)");
+	ImGui::TableNextRow();
+	ImGui::TableNextColumn(); ImGui::TextUnformatted("in vehicle");
+	ImGui::TableNextColumn(); ImGui::TextUnformatted("A D / Up Down");
+	ImGui::TableNextColumn(); ImGui::TextUnformatted("Steer / lean or aim (the stick)");
+	for (size_t i = 0; i < LCS::kKeyMappingCount; i++) {
+		const LCS::KeyMapping &m = LCS::kKeyMappings[i];
+		ImGui::TableNextRow();
+		ImGui::TableNextColumn();
+		ImGui::TextUnformatted(LCS::InputContextName(m.context));
+		ImGui::TableNextColumn();
+		ImGui::TextUnformatted(KeyMap::GetKeyName(m.key).c_str());
+		ImGui::TableNextColumn();
+		ImGui::Text("%s  (%s)", m.description, ButtonNames(m.psp).c_str());
+	}
+	ImGui::EndTable();
+}
+
 void ImLCSWindow::Draw(ImConfig &cfg) {
 	ImGui::SetNextWindowSize(ImVec2(600, 480), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("LCS", &cfg.lcsOpen)) {
@@ -354,6 +428,10 @@ void ImLCSWindow::Draw(ImConfig &cfg) {
 		}
 		if (ImGui::BeginTabItem("Addresses")) {
 			DrawAddressTable();
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Input")) {
+			DrawInput();
 			ImGui::EndTabItem();
 		}
 		if (ImGui::BeginTabItem("Scratchpad")) {

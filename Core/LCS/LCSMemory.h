@@ -63,4 +63,18 @@ bool WriteAddrU8(LCSAddr id, u8 value);
 bool WriteAddrU16(LCSAddr id, u16 value);
 bool WriteAddrFloat(LCSAddr id, float value);
 
+// --- Code words ---
+// Read through Memory::Read_Instruction, which sees through JIT block markers.
+
+enum class CodeWordState {
+	Stock,
+	Patched,
+	Foreign,   // neither: another build, code not loaded yet, or someone else's patch
+};
+CodeWordState ReadCodeWord(const LCSCodeWord &word);
+
+// Puts a word into the asked-for form, if it holds the game's op or ours (never otherwise).
+// Returns whether it is now in that form. Writes, and invalidates the JIT, only on a change.
+bool SetCodeWord(const LCSCodeWord &word, bool patched);
+
 }  // namespace LCS

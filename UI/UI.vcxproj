@@ -38,6 +38,7 @@
     <ClCompile Include="DebugOverlay.cpp" />
     <ClCompile Include="DeveloperToolsScreen.cpp" />
     <ClCompile Include="DevScreens.cpp" />
+    <ClCompile Include="LCSDevInput.cpp" />
     <ClCompile Include="DiscordIntegration.cpp" />
     <ClCompile Include="DisplayLayoutScreen.cpp" />
     <ClCompile Include="DriverManagerScreen.cpp" />
@@ -100,6 +101,7 @@
     <ClInclude Include="DebugOverlay.h" />
     <ClInclude Include="DeveloperToolsScreen.h" />
     <ClInclude Include="DevScreens.h" />
+    <ClInclude Include="LCSDevInput.h" />
     <ClInclude Include="DiscordIntegration.h" />
     <ClInclude Include="DisplayLayoutScreen.h" />
     <ClInclude Include="DriverManagerScreen.h" />

@@ -28,6 +28,9 @@
     <ClCompile Include="DevScreens.cpp">
       <Filter>Screens</Filter>
     </ClCompile>
+    <ClCompile Include="LCSDevInput.cpp">
+      <Filter>Screens</Filter>
+    </ClCompile>
     <ClCompile Include="CwCheatScreen.cpp">
       <Filter>Screens</Filter>
     </ClCompile>
@@ -189,6 +192,9 @@
       <Filter>Screens</Filter>
     </ClInclude>
     <ClInclude Include="DevScreens.h">
+      <Filter>Screens</Filter>
+    </ClInclude>
+    <ClInclude Include="LCSDevInput.h">
       <Filter>Screens</Filter>
     </ClInclude>
     <ClInclude Include="CwCheatScreen.h">

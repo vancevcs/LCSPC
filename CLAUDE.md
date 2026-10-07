@@ -47,12 +47,15 @@ Core/LCS/ (no ImGui, UI, or renderer dependencies)
   LCSGame         lifecycle + tick; the only entry point the rest of PPSSPP sees
   LCSSettings     PSP/SYSTEM/lcs.ini
   LCSFrameRate    60 fps (cap + millisecond carry)
+  LCSInput        keyboard and mouse by context; mouse look on foot
   LCSMips.h       encoders for programs written into PSP memory
 UI/ImDebugger/ImLCS   the "LCS" debugger window (Debug -> LCS)
+UI/LCSDevInput        dev only: LCS_KEY_PIPE scripted keys and mouse (docs/lcs/input.md "Testing")
 Tools/lcsimage.py, Tools/lcsscm.py   offline EBOOT image and script-opcode map
 
 Seams: init/shutdown in `__KernelInit`/`__KernelShutdown`; fingerprint in `__KernelLoadELFFromPtr`;
-tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); compat flag in
+tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys and mouse in `NativeKey` /
+`NativeMouseDelta`; the frame wait in `sceDisplayWaitVblankStart`; compat flag in
 Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
 
 ## Working rules
@@ -64,6 +67,10 @@ Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
   function's SECOND instruction (the first is a JIT block marker); InvalidateICache; reinstall after
   savestates.
 - Game calls: only from inside a non-blocking syscall on the main thread.
+- State the game reads and writes back every frame (the camera's angles) is written from the frame
+  wait (`LCS::OnFrameWait`), not the vblank tick, or a write can land mid-frame and be lost.
+- Test input with `LCS_KEY_PIPE` and "Use mouse control" off; give queued lines time to run (the
+  pipe ticks at 30 Hz here). docs/lcs/input.md "Testing" has the traps.
 - Only release input you pressed.
 - Verify positively: log that a thing ran; a screenshot without the subject verifies nothing.
 
@@ -73,3 +80,4 @@ Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
 | docs/LCS_ADDRESSES.md | every address, how found, how confirmed, what was ruled out | adding or using an address |
 | docs/lcs/architecture.md | the gate, seams, files, build lists, how to patch code | adding a hook into PPSSPP |
 | docs/lcs/frame-rate.md | 60 fps: what it patches, measurements, what's unchecked | touching CTimer or the frame wait |
+| docs/lcs/input.md | the game's layout, the bindings, key ownership, the on-foot camera takeover, testing | touching input or the camera |

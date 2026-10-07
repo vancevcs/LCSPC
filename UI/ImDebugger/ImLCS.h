@@ -36,6 +36,7 @@ private:
 	void DrawDecodedState();
 	void DrawAddressTable();
 	void DrawScratchpad();
+	void DrawInput();
 
 	static constexpr int kScratchRows = 8;
 

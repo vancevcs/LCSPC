@@ -18,6 +18,7 @@
 #include <cstring>
 
 #include "Core/MemMap.h"
+#include "Core/MIPS/MIPS.h"
 #include "Core/LCS/LCSMemory.h"
 
 namespace LCS {
@@ -187,6 +188,33 @@ bool WriteAddrU16(LCSAddr id, u16 value) {
 bool WriteAddrFloat(LCSAddr id, float value) {
 	const std::optional<u32> addr = ResolveAddr(id);
 	return addr ? WriteFloat(*addr, value) : false;
+}
+
+CodeWordState ReadCodeWord(const LCSCodeWord &word) {
+	if (!MemoryReady() || !Memory::IsValid4AlignedAddress(word.address)) {
+		return CodeWordState::Foreign;
+	}
+	const u32 op = Memory::Read_Instruction(word.address, true).encoding;
+	return op == word.stock ? CodeWordState::Stock : op == word.patched ? CodeWordState::Patched : CodeWordState::Foreign;
+}
+
+bool SetCodeWord(const LCSCodeWord &word, bool patched) {
+	const CodeWordState state = ReadCodeWord(word);
+	if (state == CodeWordState::Foreign || !currentMIPS) {
+		return false;
+	}
+	if ((state == CodeWordState::Patched) == patched) {
+		return true;
+	}
+	// Invalidating immediately puts the game's own word back over any block marker, so the raw
+	// read and write below see code. Callers run from LCS::Tick, between blocks.
+	const u32 target = patched ? word.patched : word.stock;
+	currentMIPS->InvalidateICacheRangeImmediate(word.address, 4);
+	if (Memory::ReadUnchecked_U32(word.address) != target) {
+		Memory::WriteUnchecked_U32(target, word.address);
+		currentMIPS->InvalidateICacheRangeDeferred(word.address, 4);
+	}
+	return true;
 }
 
 }  // namespace LCS

@@ -49,6 +49,10 @@ void Shutdown();
 // Once per vblank, on the emu thread.
 void Tick();
 
+// From sceDisplayWaitVblankStart, with the caller's return address. Acts only for the game's own
+// frame wait, which is between frames.
+void OnFrameWait(u32 returnAddress);
+
 bool IsActive();
 
 // For the debugger window and the log.

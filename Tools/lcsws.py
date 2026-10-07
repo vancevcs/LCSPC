@@ -39,6 +39,17 @@ class Debugger:
                     raise RuntimeError(msg.get('message'))
                 return msg
 
+    def send(self, event, **params):
+        """For events that answer with a broadcast instead of a ticketed reply (cpu.stepping,
+        cpu.resume): poll cpu.status for the result."""
+        self.ws.send(json.dumps(dict(event=event, **params)))
+
+    def pause(self, paused=True):
+        self.send('cpu.stepping' if paused else 'cpu.resume')
+        deadline = time.time() + 5
+        while self.call('cpu.status')['stepping'] != paused and time.time() < deadline:
+            time.sleep(0.01)
+
     def read(self, addr, kind='u32'):
         if kind == 'f32':
             raw = self.call('memory.read_u32', address=addr)['uintValue']

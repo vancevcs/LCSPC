@@ -252,12 +252,28 @@ then integrated into Beta / Alpha. `sens` is the float at `0x08b3591c` (`LookSen
 Alpha and Beta are also kept in `0x08b35d78` / `0x08b35d7c`. Both `LookAround*` functions are what
 ThirteenAG's dual-analog patch redirects (`34 00 80 14 ...`, calls at +0x84 and +0x13C).
 
+**What `Process_FollowPed` does to a written angle** (measured; [lcs/input.md](lcs/input.md) has
+how mouse look switches each off):
+
+| | address | effect |
+|---|---|---|
+| pitch spring | tuning table `0x08b359bc`, `[5]` (0.8; second set 0.9 at `0x08b35a0c`) | Alpha moves `1 - [5]^TimeStep` back to a default each frame; `[13]`/`[14]` (0.785 / 1.484) are the pitch limits |
+| yaw correction | `add.s $f12, $f12, $f13` at `0x088f2acc` | adds `(targetYaw - Beta) / TimeStep` to the yaw rate; undoes a written yaw |
+| obstacle nudge | float `0x08b35d70` | `(i - 2) * 0.03` per ray hit, added to Beta, decays by 0.95 |
+| yaw rate | `CCam+0xd0` | smoothed by `[8]`, clamped to `[9]` |
+| BetaLast / AlphaLast | `0x08b35d7c` / `0x08b35d78` | snapped onto when within 0.0001 |
+
+Write sites of `Cams[0].Beta`, from a log-only memory watch in the interpreter: `0x088f1e84`
+(nudge), `0x088f2b68` (integration), `0x088f2b84` / `0x088f2b9c` (wrap), `0x088f2cc8` (the snap).
+
 **Confirmed live (2026-10-07):** on foot `Mode` read 4, `FOV` 70.0, `ActiveCam` 0. Writing `Beta`
 from 6.21 to 4.21 over the debugger turned the view (camera behind Toni facing the car's rear ->
 side-on to the garages) and it stayed, easing to 4.38 and holding there. So `CamYaw` is the
 writable look input on foot, as `CameraYaw` is in VCS. In the cutscene and flyby, `Mode` read 17
-and `FOV` 51.77. Not yet checked: `Alpha` by writing, `ActiveCam` ever being 1, and which fields
-the vehicle mode (18) uses.
+and `FOV` 51.77. `Alpha` by writing: positive looks up (held at 0.45 the view looked into the
+trees, at -0.25 down onto the car roof), springing back unless the spring is off. In a car (mode 18)
+a written `Beta` moved the camera side-on and settled part-way back (1.679 written, 1.346 kept).
+Not yet checked: `ActiveCam` ever being 1.
 
 ## Code addresses
 
@@ -307,8 +323,21 @@ From the EBOOT's stub table, names resolved against PPSSPP's own HLE tables:
   `sceKernelMaxFreeMemSize` (9 call sites) and `sceKernelAllocPartitionMemory` (one, `0x08aea424`).
   The VCS draw-distance finding (heap size from free memory) has to be re-checked against these.
 
+### MenuActive `0x08b8ef51` (u8) - confirmed
+
+`FrontEndMenuManager` is at `0x08b8ee20` and `m_bMenuActive` at `+0x131`: ThirteenAG's
+`gMenuActivated` pattern (`B0 FF BD 27 ...`, second match, `0x089c2e84`) loads the base with
+`lui`/`addiu` and reads `lbu 0x131`. Code always reaches it through the base register, so `xref`
+finds nothing at the absolute address. Live: 0 in play, 1 with the pause menu up after Start, 0
+again after a second Start (and after Backspace -> Circle through the input layer). The game frame
+counter keeps advancing while it is up.
+
+### The frame wait's return address `0x08ab338c`
+
+The `jal sceDisplayWaitVblankStart` at `0x08ab3384` in the frame wait: the input layer writes the
+camera only when the syscall is called from here (`kLCSFrameWaitReturn`).
+
 ## Not found yet
 
-The aiming state (lock-on vs free aim), the menu / pause / game state, why Start doesn't show in
-`NewState`, the meaning of `DisablePlayerControls`' bits, and a weapon in hand to confirm the weapon
-array live.
+The aiming state (lock-on vs free aim), why Start doesn't show in `NewState`, the meaning of
+`DisablePlayerControls`' bits, and a weapon in hand to confirm the weapon array live.

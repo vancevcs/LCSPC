@@ -72,6 +72,14 @@ struct LCSCodeWord {
 // Pattern (ThirteenAG, GTALCS.PPSSPP.WidescreenFix, MIT): 02 00 84 2C ? ? ? ? 00 00 00 00 ? ? ? ? 00 00 00 00
 inline constexpr LCSCodeWord kLCSFrameCap = { 0x08AB3378, 0x2C840002, 0x2C840001 };
 
+// The return address of the frame wait's `jal sceDisplayWaitVblankStart` (0x08ab3384). That call
+// comes once the frame's logic is done and before the next one starts, which makes it the one
+// moment the camera's angles can be written without the game holding them in a register: written
+// from the vblank tick instead, small mouse moves were lost under the JIT (exact in the
+// interpreter, whose events land elsewhere). Other callers of the syscall (loading, other threads)
+// are told apart by this address.
+inline constexpr u32 kLCSFrameWaitReturn = 0x08AB338C;
+
 // The millisecond carry in CTimer::Update (0x0891b328). The game converts each frame's delta to
 // whole milliseconds and drops the fraction, so its clock runs at 989 ms a second at 30 fps and 959
 // at 60. It has a carry path of its own behind a flag that is never set (0x08b56c7c), quantising to
@@ -105,6 +113,58 @@ inline constexpr u32 kLCSFindPlayerOp2 = 0x9084E16C;
 
 // --- Struct offsets ---
 // Offsets inside game structs, for values read through a pointer the table can't chase on its own.
+
+// TheCamera and its CCams (docs/LCS_ADDRESSES.md "Camera"). Cams[ActiveCam] is the live one.
+inline constexpr u32 kLCSTheCamera = 0x08B833A0;
+inline constexpr u32 kLCSCamActiveOffset = 0x7f;   // u8 ActiveCam
+inline constexpr u32 kLCSCamsOffset = 0x190;       // CCam Cams[3]
+inline constexpr u32 kLCSCamStride = 0x290;
+inline constexpr u32 kLCSCamModeOffset = 0x1c;     // s16
+inline constexpr u32 kLCSCamAlphaOffset = 0xbc;    // pitch: positive looks up
+inline constexpr u32 kLCSCamBetaOffset = 0xcc;     // yaw, [0, 2PI): the stick to the right lowers it
+// Front, three floats; Process_FollowPed builds (-cos(Beta) cos(Alpha), -sin(Beta) cos(Alpha),
+// sin(Alpha)) from the angles. Writing it alongside Beta does not stop the yaw correction
+// (kLCSFollowPedYawCorrection): measured, no change at all.
+inline constexpr u32 kLCSCamFrontOffset = 0x1a0;
+inline constexpr int kLCSCamModeFollowPed = 4;
+inline constexpr int kLCSCamModeBehindCar = 3;
+inline constexpr int kLCSCamModeCamOnAString = 18;
+inline constexpr int kLCSCamModeBehindBoat = 22;
+
+// Process_FollowPed's tuning table (0x08b359bc, two sets of 15 floats; DAT_08b58df0 picks one).
+// [5] is the pitch spring: each frame Alpha moves (1 - [5]^TimeStep) of the way back to a default,
+// about 31% at 30 fps. 1.0 turns it off, which is what lets a mouse-set pitch stay put (measured:
+// Alpha written to 0.6 and -0.4 held exactly; with the spring on it was back in 0.6 s).
+// [13] and [14] are the pitch limits, up and down.
+struct LCSDataFloat {
+	u32 address;
+	float stock;
+};
+inline constexpr LCSDataFloat kLCSFollowPedPitchSpring[] = {
+	{ 0x08B359D0, 0.8f },
+	{ 0x08B35A0C, 0.9f },
+};
+inline constexpr float kLCSFollowPedPitchMax = 0.7854f;
+inline constexpr float kLCSFollowPedPitchMin = -1.4835f;
+
+// Process_FollowPed's obstacle nudge: five rays around the camera, and each that hits adds
+// (i - 2) * 0.03 rad to this float, which is then added to Beta every frame and decays by 0.95.
+// The tail is worth up to 20 times the hit, which is why a mouse turn that ends facing a wall
+// drifted 0.16 rad back on its own. Zeroed each tick while the mouse drives the camera.
+inline constexpr u32 kLCSFollowPedYawNudge = 0x08B35D70;
+
+// BetaSpeed: the yaw rate Process_FollowPed integrates into Beta, smoothed by table[8] and clamped
+// to table[9].
+inline constexpr u32 kLCSCamBetaSpeedOffset = 0xd0;
+
+// The yaw correction in Process_FollowPed: `add.s $f12, $f12, $f13` adds (targetYaw - Beta) /
+// TimeStep to the stick's yaw rate. targetYaw is the yaw of Front (rebuilt each frame from where
+// the camera actually is) plus the swing in behind a walking player. So a Beta written from outside
+// is steered back toward the camera's old position: measured, 25 mouse steps of 0.05 rad kept
+// 0.066 of 1.25. Without the add, Beta keeps what it is given (+0.995 of 1.25 with momentum left
+// from the stock run, no drift at rest). Taken out only while the mouse drives the on-foot camera;
+// the cost is the auto-swing behind a walking player, which a PC mouse camera doesn't do anyway.
+inline constexpr LCSCodeWord kLCSFollowPedYawCorrection = { 0x088F2ACC, 0x460D6300, 0x00000000 };
 
 // CVehicle::m_vehType. FindPlayerTrain (0x089d5860) compares it with 2.
 inline constexpr u32 kLCSVehicleTypeOffset = 0x344;
@@ -194,6 +254,9 @@ enum class LCSAddr {
 	PadDpadAsStick,    // u8. Stick getters read the d-pad, d-pad getters the second d-pad.
 	InvertLook,        // u8. LookAroundUpDown negates the stick while set.
 
+	// --- Front end ---
+	MenuActive,        // FrontEndMenuManager.m_bMenuActive: the pause menu (map, brief, stats...) is up.
+
 	Count,
 };
 
@@ -243,6 +306,7 @@ inline constexpr LCSAddrEntry kLCSAddresses[] = {
 	{ LCSAddr::PadDisableControls, "PadDisableControls", LCSAddrType::U16, 0x08b89e26, kNoBase,       "Pads[0]+0x86 (ThirteenAG: lhu a1, 0x86)" },
 	{ LCSAddr::PadDpadAsStick,  "PadDpadAsStick",  LCSAddrType::U8,    0x08b56434, kNoBase,             "Tested by every CPad stick/d-pad getter (0x08a96c60..)" },
 	{ LCSAddr::InvertLook,      "InvertLook",      LCSAddrType::U8,    0x08b56433, kNoBase,             "LookAroundUpDown (0x08a98d8c) negates Y while set" },
+	{ LCSAddr::MenuActive,      "MenuActive",      LCSAddrType::U8,    0x08b8ef51, kNoBase,             "FrontEndMenuManager (0x08b8ee20) +0x131. 1 with the pause menu up" },
 };
 
 static_assert(ARRAY_SIZE(kLCSAddresses) == (size_t)LCSAddr::Count,

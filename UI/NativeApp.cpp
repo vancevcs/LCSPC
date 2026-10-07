@@ -102,6 +102,8 @@
 #include "Common/UI/PopupScreens.h"
 #include "Core/CmdLine.h"
 #include "Core/ControlMapper.h"
+#include "Core/LCS/LCSInput.h"
+#include "UI/LCSDevInput.h"
 #include "Core/Config.h"
 #include "Core/ConfigValues.h"
 #include "Core/Core.h"
@@ -1150,6 +1152,9 @@ void NativeFrame(GraphicsContext *graphicsContext) {
 
 	g_OSD.Update();
 
+	// Fork-specific, dev only: LCS_KEY_PIPE's scripted keys. Nothing when it is unset.
+	LCSDevKeyPipeTick();
+
 	_dbg_assert_(graphicsContext != nullptr);
 	_dbg_assert_(g_screenManager != nullptr);
 
@@ -1624,7 +1629,12 @@ bool NativeKey(const KeyInput &key) {
 	}
 
 	if (passKeyThrough) {
-		g_controlMapper.Key(key);
+		// Fork-specific: GTA Liberty City Stories keyboard and mouse. Claims a key only while the
+		// LCS layer is active and maps it in the current context; then the mapper must not also
+		// see it. False for every other game.
+		if (!LCS::HandleHostKey(key)) {
+			g_controlMapper.Key(key);
+		}
 	}
 
 	// Ignore volume keys and stuff here - though we do send them through to the control mapper, so they can be mapped to PSP buttons.
@@ -1787,6 +1797,14 @@ static void SendMouseDeltaAxis() {
 void NativeMouseDelta(float dx, float dy) {
 	if (!g_Config.bMouseControl)
 		return;
+
+	// Fork-specific: GTA Liberty City Stories mouse look. Claims the movement while it turns the
+	// camera, so PPSSPP's mouse-to-axis mapping doesn't also act on it. Not while the ImGui
+	// debugger wants the mouse, so dragging its windows doesn't spin the camera.
+	const bool imguiWantsMouse = g_Config.bShowImDebugger && imguiInited_ && ImGui::GetIO().WantCaptureMouse;
+	if (!imguiWantsMouse && LCS::HandleMouseDelta(dx, dy)) {
+		return;
+	}
 
 	// Remap, shared code. Then send it as a regular axis event.
 	MouseEventProcessor::ProcessDelta(time_now_d(), dx, dy);

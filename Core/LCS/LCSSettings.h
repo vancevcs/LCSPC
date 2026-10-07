@@ -27,6 +27,14 @@ namespace LCS {
 struct LCSSettings {
 	// 60 fps: the frame cap plus the millisecond carry (LCSFrameRate).
 	bool frameRate60 = false;
+
+	// Keyboard and mouse by context (LCSInput). Off means every key goes to PPSSPP's own mapper.
+	bool keyboardMouse = true;
+	// The mouse turns the camera (needs PPSSPP's "Use mouse control", which also traps the cursor).
+	bool mouseLook = true;
+	// Radians per mouse count.
+	float mouseSensitivity = 0.0025f;
+	bool invertMouseY = false;
 };
 
 LCSSettings &Settings();
