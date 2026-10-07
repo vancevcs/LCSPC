@@ -282,6 +282,9 @@
     <ClCompile Include="..\..\Core\Util\DisArm64.cpp" />
     <ClCompile Include="..\..\Core\Util\GameManager.cpp" />
     <ClCompile Include="..\..\Core\Util\PPGeDraw.cpp" />
+    <ClCompile Include="..\..\Core\LCS\LCSGame.cpp" />
+    <ClCompile Include="..\..\Core\LCS\LCSMemory.cpp" />
+    <ClCompile Include="..\..\Core\LCS\LCSState.cpp" />
     <ClCompile Include="..\..\Core\Util\KL4E.cpp" />
     <ClCompile Include="..\..\Core\Util\PSARUnpack.cpp" />
     <ClCompile Include="..\..\Core\Util\PkgUnpack.cpp" />
@@ -677,6 +680,11 @@
     <ClInclude Include="..\..\Core\Util\DisArm64.h" />
     <ClInclude Include="..\..\Core\Util\GameManager.h" />
     <ClInclude Include="..\..\Core\Util\PPGeDraw.h" />
+    <ClInclude Include="..\..\Core\LCS\LCSAddresses.h" />
+    <ClInclude Include="..\..\Core\LCS\LCSGame.h" />
+    <ClInclude Include="..\..\Core\LCS\LCSMemory.h" />
+    <ClInclude Include="..\..\Core\LCS\LCSMips.h" />
+    <ClInclude Include="..\..\Core\LCS\LCSState.h" />
     <ClInclude Include="..\..\Core\Util\PSARUnpack.h" />
     <ClInclude Include="..\..\Core\Util\PkgUnpack.h" />
     <ClInclude Include="..\..\Core\WaveFile.h" />

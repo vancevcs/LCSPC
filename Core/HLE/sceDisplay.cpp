@@ -55,6 +55,7 @@
 #include "Core/Util/PPGeDraw.h"
 #include "Core/RetroAchievements.h"
 #include "Core/ControlMapper.h"
+#include "Core/LCS/LCSGame.h"
 
 #include "GPU/GPU.h"
 #include "GPU/GPUState.h"
@@ -582,6 +583,10 @@ void hleEnterVblank(u64 userdata, int cyclesLate) {
 
 	// We use the emulation timebase here, for auto movements to be smooth as seen from the game.
 	g_controlMapper.UpdateAutoMovements(CoreTiming::GetGlobalTimeUs() / 1000000.0);
+
+	// Fork-specific: the LCS layer's per-frame seam. Once per vblank, on the emu thread; returns
+	// immediately unless the layer is active.
+	LCS::Tick();
 
 	numVBlanksSinceFlip++;
 

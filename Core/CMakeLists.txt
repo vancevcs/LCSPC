@@ -699,6 +699,14 @@ add_library(Core STATIC
 	Util/BlockAllocator.h
 	Util/PPGeDraw.cpp
 	Util/PPGeDraw.h
+	LCS/LCSAddresses.h
+	LCS/LCSGame.cpp
+	LCS/LCSGame.h
+	LCS/LCSMemory.cpp
+	LCS/LCSMemory.h
+	LCS/LCSMips.h
+	LCS/LCSState.cpp
+	LCS/LCSState.h
 	Util/KL4E.cpp
 	Util/KL4E.h
 	Util/PSARUnpack.cpp

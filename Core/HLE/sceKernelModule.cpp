@@ -71,6 +71,7 @@
 #include "Core/HLE/sceIo.h"
 #include "Core/HLE/KernelWaitHelpers.h"
 #include "Core/ELF/ParamSFO.h"
+#include "Core/LCS/LCSGame.h"
 
 #include "GPU/Debugger/Playback.h"
 #include "GPU/GPU.h"
@@ -1534,6 +1535,12 @@ static PSPModule *__KernelLoadELFFromPtr(const u8 *ptr, size_t elfSize, u32 load
 		kernelObjects.Destroy<PSPModule>(module->GetUID());
 		error = SCE_KERNEL_ERROR_UNSUPPORTED_PRX_TYPE;
 		return nullptr;
+	}
+
+	// Fork-specific: the LCS layer's build fingerprint, taken from the decrypted executable. Does
+	// nothing unless LCS::Init accepted the disc.
+	if (endsWith(filename, "BOOT.BIN")) {
+		LCS::NoteBootExecutable(ptr, elfSize);
 	}
 
 	// Open ELF reader

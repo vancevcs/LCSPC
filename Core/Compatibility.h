@@ -122,6 +122,7 @@ struct CompatFlags {
 	float SpriteBorderFix;
 	bool TextureCLUTInShader;
 	bool DisableRangeCulling;
+	bool LCSOverhaul;
 };
 
 struct VRCompat {

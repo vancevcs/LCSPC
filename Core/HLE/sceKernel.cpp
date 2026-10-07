@@ -97,6 +97,7 @@
 #include "sceOpenPSID.h"
 #include "sceHttp.h"
 #include "Core/Util/PPGeDraw.h"
+#include "Core/LCS/LCSGame.h"
 
 /*
 17: [MIPS32 R4K 00000000 ]: Loader: Type: 1 Vaddr: 00000000 Filesz: 2856816 Memsz: 2856816 
@@ -178,6 +179,10 @@ void __KernelInit()
 	// "Internal" PSP libraries
 	__PPGeInit();
 
+	// Fork-specific: GTA Liberty City Stories layer. Inactive unless the LCSOverhaul compat flag
+	// is set for this disc. After __CtrlInit, since it will drive sceCtrl.
+	LCS::Init();
+
 	kernelRunning = true;
 	g_GPOBits = 0;
 	INFO_LOG(Log::sceKernel, "Kernel initialized.");
@@ -215,6 +220,9 @@ void __KernelShutdown()
 	__MpegBaseShutdown();
 	__PsmfShutdown();
 	__PPGeShutdown();
+
+	// Before __CtrlShutdown, so held buttons are released while sceCtrl is still alive.
+	LCS::Shutdown();
 
 	__CtrlShutdown();
 	__UtilityShutdown();

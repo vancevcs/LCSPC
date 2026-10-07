@@ -2789,6 +2789,9 @@ void ImDebugger::Frame(MIPSDebugInterface *mipsDebug, GPUCommon *gpuDebug, Draw:
 			}
 			ImGui::MenuItem("Struct viewer", nullptr, &cfg_.structViewerOpen);
 			ImGui::MenuItem("Atrac Tool", nullptr, &cfg_.atracToolOpen);
+			ImGui::Separator();
+			// Fork-specific: GTA Liberty City Stories state and address finder.
+			ImGui::MenuItem("LCS", nullptr, &cfg_.lcsOpen);
 			ImGui::EndMenu();
 		}
 
@@ -2924,6 +2927,10 @@ void ImDebugger::Frame(MIPSDebugInterface *mipsDebug, GPUCommon *gpuDebug, Draw:
 
 		if (cfg_.paramSFOOpen) {
 			DrawParamSFO(cfg_, control);
+		}
+
+		if (cfg_.lcsOpen) {
+			lcsWindow_.Draw(cfg_);
 		}
 
 		if (cfg_.geDebuggerOpen) {
@@ -3156,6 +3163,7 @@ void ImConfig::SyncConfig(IniFile *ini, bool save) {
 	sync.Sync("paramSFOOpen", &paramSFOOpen, false);
 	sync.Sync("atracToolOpen", &atracToolOpen, false);
 	sync.Sync("jitViewerOpen", &jitViewerOpen, false);
+	sync.Sync("lcsOpen", &lcsOpen, false);
 	for (int i = 0; i < 4; i++) {
 		char name[64];
 		snprintf(name, sizeof(name), "memory%dOpen", i + 1);

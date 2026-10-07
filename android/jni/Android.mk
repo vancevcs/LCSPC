@@ -811,6 +811,9 @@ EXEC_AND_LIB_FILES := \
   $(SRC)/Core/Util/GameManager.cpp \
   $(SRC)/Core/Util/BlockAllocator.cpp \
   $(SRC)/Core/Util/PPGeDraw.cpp \
+  $(SRC)/Core/LCS/LCSGame.cpp \
+  $(SRC)/Core/LCS/LCSMemory.cpp \
+  $(SRC)/Core/LCS/LCSState.cpp \
   $(SRC)/Core/Util/KL4E.cpp \
   $(SRC)/Core/Util/PSARUnpack.cpp \
   $(SRC)/Core/Util/PkgUnpack.cpp \
@@ -947,6 +950,7 @@ LOCAL_SRC_FILES := \
   $(SRC)/UI/ImDebugger/ImDisasmView.cpp \
   $(SRC)/UI/ImDebugger/ImMemView.cpp \
   $(SRC)/UI/ImDebugger/ImJitViewer.cpp \
+  $(SRC)/UI/ImDebugger/ImLCS.cpp \
   $(SRC)/UI/ImDebugger/ImStructViewer.cpp \
   $(SRC)/UI/AudioCommon.cpp \
   $(SRC)/UI/BackgroundAudio.cpp \

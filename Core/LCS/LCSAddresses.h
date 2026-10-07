@@ -1,0 +1,181 @@
+// Copyright (c) 2012- PPSSPP Project.
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, version 2.0 or later versions.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License 2.0 for more details.
+
+// A copy of the GPL 2.0 should have been included with the program.
+// If not, see http://www.gnu.org/licenses/
+
+// Official git repository and contact information can be found at
+// https://github.com/hrydgard/ppsspp and http://www.ppsspp.org/.
+
+#pragma once
+
+#include "Common/Common.h"
+#include "Common/CommonTypes.h"
+
+// THE address table for GTA: Liberty City Stories, USA (ULUS10041), revision 3.00 only.
+//
+// This is the only place in the codebase where an LCS memory address may appear. Everything else
+// refers to entries by their LCSAddr value and goes through LCSMemory.
+//
+// Any entry may be kUnsetAddress. That is a supported state: reads of unset entries return
+// std::nullopt without touching PSP memory, and the debugger window shows "unset".
+//
+// docs/LCS_ADDRESSES.md says, for every entry, how it was found, how it was confirmed, and what was
+// ruled out. Code addresses carry the byte pattern that finds them in another revision.
+
+namespace LCS {
+
+// Sentinel for "not found yet". Address 0 is never a valid PSP user address.
+inline constexpr u32 kUnsetAddress = 0;
+
+// --- The build every address below was measured on ---
+//
+// ULUS10041 shipped as v1.05, v2.00 and v3.00 under the same disc ID, and the code moves between
+// them. The disc ID and DISC_VERSION are a cheap early filter; the EBOOT hash is what decides.
+inline constexpr const char *kLCSDiscID = "ULUS10041";
+inline constexpr const char *kLCSDiscVersion = "3.00";
+
+// SHA-1 of the decrypted EBOOT, exactly as PPSSPP's DumpFileTypes = 1 writes it.
+// `certutil -hashfile ULUS10041_EBOOT.BIN SHA1` gives 0c8da52387fe6a709bdbbd0ed4a53b3fb6a8b1c9.
+inline constexpr u32 kLCSEbootSize = 4539680;
+inline constexpr u8 kLCSEbootSha1[20] = {
+	0x0c, 0x8d, 0xa5, 0x23, 0x87, 0xfe, 0x6a, 0x70, 0x9b, 0xdb,
+	0xbd, 0x0e, 0xd4, 0xa5, 0x3b, 0x3f, 0xb6, 0xa8, 0xb1, 0xc9,
+};
+
+// Where PPSSPP loads the GTA3 module. Not something we choose, so it is checked on the first tick
+// against an instruction whose address follows from it (kLCSFrameCapSite).
+inline constexpr u32 kLCSModuleBase = 0x08804000;
+
+// --- Code addresses ---
+// Each with the instruction expected there, read through Memory::Read_Instruction.
+
+// The 30 fps cap in the frame wait: `sltiu $a0, $a0, 2` against the vblank counter
+// (LCSAddr::FrameVblanks). The same instruction as VCS's.
+// Pattern (ThirteenAG, GTALCS.PPSSPP.WidescreenFix, MIT): 02 00 84 2C ? ? ? ? 00 00 00 00 ? ? ? ? 00 00 00 00
+inline constexpr u32 kLCSFrameCapSite = 0x08AB3378;
+inline constexpr u32 kLCSFrameCapOp = 0x2C840002;
+
+// CRunningScript::ProcessOneCommand. Reads the opcode at script+0x18, stores the NOT bit at
+// script+0x216, and dispatches by range to 17 ProcessCommandsXToY switches (tools/lcsscm.py).
+inline constexpr u32 kLCSProcessOneCommand = 0x08957A90;
+inline constexpr u32 kLCSCollectParameters = 0x08961BEC;
+inline constexpr u32 kLCSStoreParameters = 0x08957EB8;
+
+// FindPlayerPed / FindPlayerVehicle. Second instruction of each is `lbu $a0, -0x1e94($a0)`
+// (CWorld::PlayerInFocus). Patterns (ThirteenAG, as above):
+//   C0 29 04 00 21 30 A5 00 21 28 A6 00 00 21 04 00 23 20 A4 00 ? ? ? ? ? ? ? ? 21 20 85 00 08 00 E0 03, -8
+//   same prefix, then 00 00 84 8C ? ? ? ? 00 00 00 00 38 05 85 90, -8
+inline constexpr u32 kLCSFindPlayerPed = 0x089D58B0;
+inline constexpr u32 kLCSFindPlayerVehicle = 0x089D57B4;
+inline constexpr u32 kLCSFindPlayerOp2 = 0x9084E16C;
+
+// --- Struct offsets ---
+// Offsets inside game structs, for values read through a pointer the table can't chase on its own.
+
+// CVehicle::m_vehType. FindPlayerTrain (0x089d5860) compares it with 2.
+inline constexpr u32 kLCSVehicleTypeOffset = 0x344;
+
+// How to interpret the bytes at an address.
+enum class LCSAddrType {
+	U8,
+	U16,
+	U32,
+	S32,
+	Float,
+};
+
+// One entry per value read out of the game. Keep in sync with kLCSAddresses below.
+enum class LCSAddr {
+	// --- Player ---
+	PlayerInFocus,     // CWorld::PlayerInFocus. Index into CWorld::Players.
+	PlayerBase,        // CWorld::Players[0].m_pPed: pointer to the local player ped.
+	PlayerHealth,      // Ped health, float.
+	PlayerInVehicle,   // Ped's bInVehicle. FindPlayerVehicle returns 0 unless this is set.
+	PlayerVehicle,     // Ped's m_pMyVehicle. Only meaningful while PlayerInVehicle is set.
+
+	// --- Timer ---
+	TimeInMs,          // CTimer::m_snTimeInMilliseconds. Game clock, follows the system clock.
+	TimeStep,          // CTimer::ms_fTimeStep. Frame delta in 1/50 s; clamped to 3.333.
+	FrameCounter,      // CTimer::m_FrameCounter. +1 per game frame.
+	FrameVblanks,      // Vblanks since the last frame flip; the frame wait loops until it reaches 2.
+
+	// --- Scripts ---
+	ScriptParams,      // CTheScripts::ScriptParams[0]. CollectParameters writes here.
+
+	// --- Camera ---
+	// TheCamera is at 0x08b833a0; Cams[3] at +0x190, stride 0x290. These read Cams[0].
+	ActiveCam,         // TheCamera.ActiveCam: which of Cams[] is live.
+	CamMode,           // Cams[0].Mode. 4 on foot, 18/22 in vehicles, 11/28 lock-on, 7/8/34/45/46 first person.
+	CamPitch,          // Cams[0].Alpha, radians. Process_FollowPed clamps it.
+	CamYaw,            // Cams[0].Beta, radians in [0, 2PI).
+	CamFOV,            // Cams[0].FOV, degrees. Look rates scale with FOV/80.
+	WeaponCamMode,     // TheCamera.PlayerWeaponMode.Mode. Using1stPersonWeaponMode tests it.
+	LookSensitivity,   // Squared in the on-foot look response.
+
+	Count,
+};
+
+// Sentinel for the `base` field: this entry's address is absolute.
+inline constexpr LCSAddr kNoBase = LCSAddr::Count;
+
+struct LCSAddrEntry {
+	LCSAddr id;
+	const char *name;      // Shown in the debugger window.
+	LCSAddrType type;
+
+	// When base == kNoBase, an absolute address, and kUnsetAddress means "not found". Otherwise a
+	// byte offset from the pointer stored at `base` (one level of indirection only).
+	u32 address;
+	LCSAddr base;
+
+	const char *note;      // Short hint; the long version lives in docs/LCS_ADDRESSES.md.
+};
+
+// Order must match the LCSAddr enum exactly - LookupAddr indexes into this directly.
+inline constexpr LCSAddrEntry kLCSAddresses[] = {
+	{ LCSAddr::PlayerInFocus,   "PlayerInFocus",   LCSAddrType::U8,    0x08b5e16c, kNoBase,             "u8. 0 in single player" },
+	{ LCSAddr::PlayerBase,      "PlayerBase",      LCSAddrType::U32,   0x08b89b10, kNoBase,             "CWorld::Players[0].m_pPed. Players[] stride 0x170" },
+	{ LCSAddr::PlayerHealth,    "PlayerHealth",    LCSAddrType::Float, 0x4b8,      LCSAddr::PlayerBase, "ped+0x4b8. get_player_health (022A) reads it" },
+	{ LCSAddr::PlayerInVehicle, "PlayerInVehicle", LCSAddrType::U8,    0x538,      LCSAddr::PlayerBase, "ped+0x538. FindPlayerVehicle tests it" },
+	{ LCSAddr::PlayerVehicle,   "PlayerVehicle",   LCSAddrType::U32,   0x534,      LCSAddr::PlayerBase, "ped+0x534. Stale when PlayerInVehicle is 0" },
+	{ LCSAddr::TimeInMs,        "TimeInMs",        LCSAddrType::U32,   0x08b5e144, kNoBase,             "Set to 1 by CTimer::Initialise (0x0891b1a4)" },
+	{ LCSAddr::TimeStep,        "TimeStep",        LCSAddrType::Float, 0x08b5e148, kNoBase,             "CTimer::Update clamps it to 3.333" },
+	{ LCSAddr::FrameCounter,    "FrameCounter",    LCSAddrType::U32,   0x08b5e174, kNoBase,             "Incremented at the end of CTimer::Update (0x0891b648)" },
+	{ LCSAddr::FrameVblanks,    "FrameVblanks",    LCSAddrType::U32,   0x08b56a90, kNoBase,             "Read by the 30 fps cap; zeroed after the wait" },
+	{ LCSAddr::ScriptParams,    "ScriptParams",    LCSAddrType::U32,   0x08dcf550, kNoBase,             "Passed to CollectParameters as $a3" },
+	{ LCSAddr::ActiveCam,       "ActiveCam",       LCSAddrType::U8,    0x08b8341f, kNoBase,             "TheCamera+0x7f. Indexes Cams[] (stride 0x290)" },
+	{ LCSAddr::CamMode,         "CamMode",         LCSAddrType::U16,   0x08b8354c, kNoBase,             "Cams[0]+0x1c. CCam::Process (0x088f0098) switches on it" },
+	{ LCSAddr::CamPitch,        "CamPitch",        LCSAddrType::Float, 0x08b835ec, kNoBase,             "Cams[0]+0xbc (Alpha). Rate at +0xc0" },
+	{ LCSAddr::CamYaw,          "CamYaw",          LCSAddrType::Float, 0x08b835fc, kNoBase,             "Cams[0]+0xcc (Beta). Rate at +0xd0" },
+	{ LCSAddr::CamFOV,          "CamFOV",          LCSAddrType::Float, 0x08b835f4, kNoBase,             "Cams[0]+0xc4" },
+	{ LCSAddr::WeaponCamMode,   "WeaponCamMode",   LCSAddrType::U16,   0x08b83cf4, kNoBase,             "TheCamera+0x954 (PlayerWeaponMode.Mode)" },
+	{ LCSAddr::LookSensitivity, "LookSensitivity", LCSAddrType::Float, 0x08b3591c, kNoBase,             "Squared in Process_FollowPed's look response" },
+};
+
+static_assert(ARRAY_SIZE(kLCSAddresses) == (size_t)LCSAddr::Count,
+	"kLCSAddresses must have exactly one entry per LCSAddr, in enum order");
+
+inline constexpr const LCSAddrEntry &LookupAddr(LCSAddr id) {
+	return kLCSAddresses[(size_t)id];
+}
+
+// Whether we know where this value lives. For a based entry the offset may legitimately be 0, so
+// having a base is itself the signal.
+inline constexpr bool IsAddrSet(LCSAddr id) {
+	const LCSAddrEntry &entry = LookupAddr(id);
+	if (entry.base != kNoBase) {
+		return IsAddrSet(entry.base);
+	}
+	return entry.address != kUnsetAddress;
+}
+
+}  // namespace LCS

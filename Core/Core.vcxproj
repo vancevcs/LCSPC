@@ -924,6 +924,9 @@
     <ClCompile Include="Util\PathUtil.cpp" />
     <ClCompile Include="Util\PortManager.cpp" />
     <ClCompile Include="Util\PPGeDraw.cpp" />
+    <ClCompile Include="LCS\LCSGame.cpp" />
+    <ClCompile Include="LCS\LCSMemory.cpp" />
+    <ClCompile Include="LCS\LCSState.cpp" />
     <ClCompile Include="Util\KL4E.cpp" />
     <ClCompile Include="Util\PSARUnpack.cpp" />
     <ClCompile Include="Util\PkgUnpack.cpp" />
@@ -1297,6 +1300,11 @@
     <ClInclude Include="Util\PathUtil.h" />
     <ClInclude Include="Util\PortManager.h" />
     <ClInclude Include="Util\PPGeDraw.h" />
+    <ClInclude Include="LCS\LCSAddresses.h" />
+    <ClInclude Include="LCS\LCSGame.h" />
+    <ClInclude Include="LCS\LCSMemory.h" />
+    <ClInclude Include="LCS\LCSMips.h" />
+    <ClInclude Include="LCS\LCSState.h" />
     <ClInclude Include="Util\KL4E.h" />
     <ClInclude Include="Util\PSARUnpack.h" />
     <ClInclude Include="Util\PkgUnpack.h" />

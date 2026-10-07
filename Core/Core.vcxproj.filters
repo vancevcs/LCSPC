@@ -28,6 +28,9 @@
     <Filter Include="HLE\Libraries">
       <UniqueIdentifier>{1926828c-7fec-495c-bea5-5a5f21f1dd06}</UniqueIdentifier>
     </Filter>
+    <Filter Include="LCS">
+      <UniqueIdentifier>{d64066c8-6a4b-49be-91ed-3b4dc20f930b}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Util">
       <UniqueIdentifier>{e1b92469-14c3-492f-be08-9dcd67a5c427}</UniqueIdentifier>
     </Filter>
@@ -371,6 +374,15 @@
     </ClCompile>
     <ClCompile Include="Util\PPGeDraw.cpp">
       <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="LCS\LCSGame.cpp">
+      <Filter>LCS</Filter>
+    </ClCompile>
+    <ClCompile Include="LCS\LCSMemory.cpp">
+      <Filter>LCS</Filter>
+    </ClCompile>
+    <ClCompile Include="LCS\LCSState.cpp">
+      <Filter>LCS</Filter>
     </ClCompile>
     <ClCompile Include="Util\KL4E.cpp">
       <Filter>Util</Filter>
@@ -1712,6 +1724,21 @@
     </ClInclude>
     <ClInclude Include="Util\PPGeDraw.h">
       <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="LCS\LCSAddresses.h">
+      <Filter>LCS</Filter>
+    </ClInclude>
+    <ClInclude Include="LCS\LCSGame.h">
+      <Filter>LCS</Filter>
+    </ClInclude>
+    <ClInclude Include="LCS\LCSMemory.h">
+      <Filter>LCS</Filter>
+    </ClInclude>
+    <ClInclude Include="LCS\LCSMips.h">
+      <Filter>LCS</Filter>
+    </ClInclude>
+    <ClInclude Include="LCS\LCSState.h">
+      <Filter>LCS</Filter>
     </ClInclude>
     <ClInclude Include="Util\PSARUnpack.h">
       <Filter>Util</Filter>
