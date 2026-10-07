@@ -384,6 +384,12 @@
     <ClCompile Include="LCS\LCSState.cpp">
       <Filter>LCS</Filter>
     </ClCompile>
+    <ClCompile Include="LCS\LCSFrameRate.cpp">
+      <Filter>LCS</Filter>
+    </ClCompile>
+    <ClCompile Include="LCS\LCSSettings.cpp">
+      <Filter>LCS</Filter>
+    </ClCompile>
     <ClCompile Include="Util\KL4E.cpp">
       <Filter>Util</Filter>
     </ClCompile>
@@ -1738,6 +1744,12 @@
       <Filter>LCS</Filter>
     </ClInclude>
     <ClInclude Include="LCS\LCSState.h">
+      <Filter>LCS</Filter>
+    </ClInclude>
+    <ClInclude Include="LCS\LCSFrameRate.h">
+      <Filter>LCS</Filter>
+    </ClInclude>
+    <ClInclude Include="LCS\LCSSettings.h">
       <Filter>LCS</Filter>
     </ClInclude>
     <ClInclude Include="Util\PSARUnpack.h">

@@ -25,7 +25,9 @@
 #include "Core/MemMap.h"
 #include "Core/System.h"
 #include "Core/LCS/LCSAddresses.h"
+#include "Core/LCS/LCSFrameRate.h"
 #include "Core/LCS/LCSGame.h"
+#include "Core/LCS/LCSSettings.h"
 #include "Core/LCS/LCSState.h"
 
 namespace LCS {
@@ -55,6 +57,7 @@ void Init() {
 	g_ebootHash.clear();
 	g_tickCount = 0;
 	ClearState();
+	FrameRateReset();
 
 	g_discID = g_paramSFO.GetDiscID();
 	g_discVersion = g_paramSFO.GetValueString("DISC_VERSION");
@@ -103,6 +106,8 @@ void NoteBootExecutable(const u8 *elf, size_t size) {
 
 	g_active = true;
 	g_inactiveReason.clear();
+	// Only once we know this is the game: no other boot reads or creates lcs.ini.
+	LoadSettings();
 	int known = 0;
 	for (const LCSAddrEntry &entry : kLCSAddresses) {
 		if (IsAddrSet(entry.id)) {
@@ -115,6 +120,7 @@ void NoteBootExecutable(const u8 *elf, size_t size) {
 
 void Shutdown() {
 	ClearState();
+	FrameRateReset();
 	g_candidate = false;
 	g_active = false;
 	g_baseChecked = false;
@@ -127,13 +133,14 @@ void Tick() {
 	}
 
 	// The hash says which code this is, not where it was put. One instruction at a known address
-	// checks both the base and that nothing has patched the frame wait. Read_Instruction, because a
-	// raw read of code the JIT has compiled can return a block marker.
+	// checks both the base and that nothing else has patched the frame wait. Read_Instruction,
+	// because a raw read of code the JIT has compiled can return a block marker.
 	if (!g_baseChecked) {
-		const u32 op = Memory::IsValidAddress(kLCSFrameCapSite) ? Memory::Read_Instruction(kLCSFrameCapSite, false).encoding : 0;
-		if (op != kLCSFrameCapOp) {
+		const LCSCodeWord &cap = kLCSFrameCap;
+		const u32 op = Memory::IsValidAddress(cap.address) ? Memory::Read_Instruction(cap.address, false).encoding : 0;
+		if (op != cap.stock && op != cap.patched) {
 			Deactivate(StringFromFormat("expected %08x at %08x, found %08x (module not at %08x, or patched)",
-				kLCSFrameCapOp, kLCSFrameCapSite, op, kLCSModuleBase));
+				cap.stock, cap.address, op, kLCSModuleBase));
 			return;
 		}
 		g_baseChecked = true;
@@ -141,6 +148,7 @@ void Tick() {
 	}
 
 	g_tickCount++;
+	FrameRateTick();
 	UpdateSharedState();
 }
 

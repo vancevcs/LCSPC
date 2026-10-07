@@ -38,11 +38,25 @@ Core/LCS/            no ImGui, UI or renderer dependencies
   LCSMemory          optional reads and checked writes; a bad address is never fatal
   LCSState           per-tick decoded state, optional per field
   LCSGame            lifecycle and tick: the only entry point the rest of PPSSPP calls
+  LCSSettings        PSP/SYSTEM/lcs.ini, loaded when the layer activates
+  LCSFrameRate       60 fps: frame cap + millisecond carry, re-checked every tick (frame-rate.md)
   LCSMips.h          encoders for programs written into PSP memory
-UI/ImDebugger/ImLCS  the Debug -> LCS window
+UI/ImDebugger/ImLCS  the Debug -> LCS window (state, table, scratchpad, the 60 fps switch)
 Tools/lcsimage.py    the EBOOT relocated into a RAM image: find, disasm, callers, xref
 Tools/lcsscm.py      script opcode -> handler address
+Tools/lcsws.py       WebSocket debugger client: read, write, watch, press
 ```
+
+Tick order: base check (first tick only) -> `FrameRateTick` -> `UpdateSharedState`.
+
+## Patching code
+
+`LCSFrameRate.cpp` has the pattern every code patch should follow until a second user justifies a
+shared helper: check every word of a set through `Memory::Read_Instruction` (it sees through JIT
+block markers) and write none unless all hold either the game's op or ours; to write,
+`InvalidateICacheRangeImmediate` first (restores the original op over a marker), then the raw
+read/write, then `InvalidateICacheRangeDeferred`. Upstream renamed `InvalidateICache`, which the VCS
+fork and the guide still call it.
 
 A new source file goes in all seven build files: `Core/CMakeLists.txt`, `Core/Core.vcxproj` and
 `.filters`, `UWP/CoreUWP/CoreUWP.vcxproj` and `.filters`, `android/jni/Android.mk`,
@@ -54,4 +68,5 @@ A new source file goes in all seven build files: `Core/CMakeLists.txt`, `Core/Co
 From the guide, added only when a feature needs them: host keys / axes / mouse in `UI/NativeApp.cpp`
 (input), by-address `REPFLAG_HOOKENTER` install in `Core/HLE/ReplaceTables.*` (hooks), call hosts in
 non-blocking syscalls (game calls), `__KernelLoadExec` (boot-time patches), `ISOFileSystem::ReadFile`
-(disc file substitution), frameskip in `sceDisplay.cpp` (60 fps), and the renderer.
+(disc file substitution), frameskip in `sceDisplay.cpp` (only if 60 fps turns out to drop frames
+somewhere), and the renderer.

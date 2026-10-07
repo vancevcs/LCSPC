@@ -707,6 +707,10 @@ add_library(Core STATIC
 	LCS/LCSMips.h
 	LCS/LCSState.cpp
 	LCS/LCSState.h
+	LCS/LCSFrameRate.cpp
+	LCS/LCSFrameRate.h
+	LCS/LCSSettings.cpp
+	LCS/LCSSettings.h
 	Util/KL4E.cpp
 	Util/KL4E.h
 	Util/PSARUnpack.cpp

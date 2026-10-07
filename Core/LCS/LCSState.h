@@ -26,6 +26,18 @@
 
 namespace LCS {
 
+// GetVehicleAppearance's classes (0x088a08c4), from the handling flags. Not m_vehType.
+enum class VehicleClass {
+	Unknown,
+	Car,
+	Bike,
+	Heli,
+	Boat,
+	Plane,
+};
+
+const char *VehicleClassName(VehicleClass klass);
+
 struct LCSState {
 	std::optional<u32> playerBase;
 	std::optional<float> health;
@@ -33,8 +45,13 @@ struct LCSState {
 	std::optional<bool> inVehicle;
 	// Only set while inVehicle is true: the ped's vehicle pointer goes stale on foot.
 	std::optional<u32> playerVehicle;
-	// CVehicle::m_vehType of playerVehicle. Raw value; which number is which class is unconfirmed.
+	// CVehicle::m_vehType of playerVehicle, raw (2 is a train).
 	std::optional<u32> vehicleType;
+	VehicleClass vehicleClass = VehicleClass::Unknown;
+
+	// The selected slot (0-9) and the weapon type in it.
+	std::optional<u32> weaponSlot;
+	std::optional<u32> weaponType;
 
 	std::optional<u32> activeCam;
 	std::optional<u32> camMode;

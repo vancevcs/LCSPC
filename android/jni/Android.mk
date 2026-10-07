@@ -814,6 +814,8 @@ EXEC_AND_LIB_FILES := \
   $(SRC)/Core/LCS/LCSGame.cpp \
   $(SRC)/Core/LCS/LCSMemory.cpp \
   $(SRC)/Core/LCS/LCSState.cpp \
+  $(SRC)/Core/LCS/LCSFrameRate.cpp \
+  $(SRC)/Core/LCS/LCSSettings.cpp \
   $(SRC)/Core/Util/KL4E.cpp \
   $(SRC)/Core/Util/PSARUnpack.cpp \
   $(SRC)/Core/Util/PkgUnpack.cpp \

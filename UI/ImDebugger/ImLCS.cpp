@@ -22,8 +22,10 @@
 #include "ext/imgui/imgui.h"
 #include "Core/System.h"
 #include "Core/LCS/LCSAddresses.h"
+#include "Core/LCS/LCSFrameRate.h"
 #include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSMemory.h"
+#include "Core/LCS/LCSSettings.h"
 #include "Core/LCS/LCSState.h"
 #include "UI/ImDebugger/ImDebugger.h"
 #include "UI/ImDebugger/ImLCS.h"
@@ -114,6 +116,15 @@ void ImLCSWindow::DrawStatus() {
 		}
 	}
 	ImGui::Text("Addresses known: %d / %d", known, (int)LCS::LCSAddr::Count);
+
+	// Saved to lcs.ini at once; LCS::Tick applies it on the next vblank.
+	bool frameRate60 = LCS::Settings().frameRate60;
+	if (ImGui::Checkbox("60 fps", &frameRate60)) {
+		LCS::Settings().frameRate60 = frameRate60;
+		LCS::SaveSettings();
+	}
+	ImGui::SameLine();
+	ImGui::TextDisabled("(%s)", LCS::FrameRateIs60() ? "cap and carry in" : "stock");
 }
 
 void ImLCSWindow::DrawDecodedState() {
@@ -138,6 +149,9 @@ void ImLCSWindow::DrawDecodedState() {
 	row("inVehicle");     TextOptionalBool(state.inVehicle);
 	row("playerVehicle"); TextOptionalU32(state.playerVehicle);
 	row("vehicleType");   TextOptionalU32(state.vehicleType);
+	row("vehicleClass");  ImGui::TextUnformatted(LCS::VehicleClassName(state.vehicleClass));
+	row("weaponSlot");    TextOptionalU32(state.weaponSlot);
+	row("weaponType");    TextOptionalU32(state.weaponType);
 	row("activeCam");     TextOptionalU32(state.activeCam);
 	row("camMode");       TextOptionalU32(state.camMode);
 	row("camYaw");        TextOptionalFloat(state.camYaw);

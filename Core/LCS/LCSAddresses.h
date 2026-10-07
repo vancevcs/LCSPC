@@ -52,17 +52,42 @@ inline constexpr u8 kLCSEbootSha1[20] = {
 };
 
 // Where PPSSPP loads the GTA3 module. Not something we choose, so it is checked on the first tick
-// against an instruction whose address follows from it (kLCSFrameCapSite).
+// against an instruction whose address follows from it (kLCSFrameCap).
 inline constexpr u32 kLCSModuleBase = 0x08804000;
 
 // --- Code addresses ---
 // Each with the instruction expected there, read through Memory::Read_Instruction.
 
+// One instruction, in the game's form and ours.
+struct LCSCodeWord {
+	u32 address;
+	u32 stock;
+	u32 patched;
+};
+
 // The 30 fps cap in the frame wait: `sltiu $a0, $a0, 2` against the vblank counter
-// (LCSAddr::FrameVblanks). The same instruction as VCS's.
+// (LCSAddr::FrameVblanks). The same instruction as VCS's; 1 makes it 60. The game fits a frame in
+// one vblank at its own 222 MHz (measured driving through Harwood: 59.94 fps at 100% speed), so
+// unlike VCS no CPU clock change goes with it. CTimer follows the system clock, so TimeStep halves.
 // Pattern (ThirteenAG, GTALCS.PPSSPP.WidescreenFix, MIT): 02 00 84 2C ? ? ? ? 00 00 00 00 ? ? ? ? 00 00 00 00
-inline constexpr u32 kLCSFrameCapSite = 0x08AB3378;
-inline constexpr u32 kLCSFrameCapOp = 0x2C840002;
+inline constexpr LCSCodeWord kLCSFrameCap = { 0x08AB3378, 0x2C840002, 0x2C840001 };
+
+// The millisecond carry in CTimer::Update (0x0891b328). The game converts each frame's delta to
+// whole milliseconds and drops the fraction, so its clock runs at 989 ms a second at 30 fps and 959
+// at 60. It has a carry path of its own behind a flag that is never set (0x08b56c7c), quantising to
+// 16 ms. These five words take that path unconditionally with a 1 ms quantum held in $t3 (dead
+// there: next written at 0x0891b434). Measured at 60 fps: 999.9 ms a second, TimeStep 0.80/0.85.
+// The same fix as VCS's kVCSTimerCarry.
+inline constexpr LCSCodeWord kLCSTimerCarry[] = {
+	{ 0x0891B3EC, 0x3C0908B5, 0x3C0B0004 },  // lui $t1, 0x8b5          ->  lui $t3, 0x4
+	{ 0x0891B3F0, 0x91296C7C, 0x356B8000 },  // lbu $t1, 0x6c7c($t1)    ->  ori $t3, $t3, 0x8000
+	{ 0x0891B3F4, 0x1120000A, 0x00000000 },  // beqz $t1, +10           ->  nop
+	{ 0x0891B408, 0x3C0A0048, 0x00000000 },  // lui $t2, 0x48           ->  nop
+	{ 0x0891B40C, 0x008A001B, 0x008B001B },  // divu $a0, $t2           ->  divu $a0, $t3
+};
+// The carry's remainder, in ticks of 1/294912 s. Zeroed when the carry goes in, so whatever the
+// game left there does not land on one frame.
+inline constexpr u32 kLCSTimerRemainder = 0x08B36BCC;
 
 // CRunningScript::ProcessOneCommand. Reads the opcode at script+0x18, stores the NOT bit at
 // script+0x216, and dispatches by range to 17 ProcessCommandsXToY switches (tools/lcsscm.py).
@@ -84,6 +109,41 @@ inline constexpr u32 kLCSFindPlayerOp2 = 0x9084E16C;
 // CVehicle::m_vehType. FindPlayerTrain (0x089d5860) compares it with 2.
 inline constexpr u32 kLCSVehicleTypeOffset = 0x344;
 
+// What the scripts' is_*_on_any_bike / in_any_heli / in_any_plane / is_boat ask
+// (GetVehicleAppearance, 0x088a08c4): the handling flags' type nibble.
+inline constexpr u32 kLCSVehicleHandlingOffset = 0x150;   // CVehicle::pHandling
+inline constexpr u32 kLCSHandlingFlagsOffset = 0xd0;      // tHandlingData::Flags
+inline constexpr u32 kLCSHandlingTypeMask = 0xf0000;
+inline constexpr u32 kLCSHandlingIsBike = 0x10000;
+inline constexpr u32 kLCSHandlingIsHeli = 0x20000;
+inline constexpr u32 kLCSHandlingIsPlane = 0x40000;
+inline constexpr u32 kLCSHandlingIsBoat = 0x80000;
+
+// CPed::m_weapons[10] and CPed::m_currentWeapon (get_current_char_weapon, 0475). A CWeapon is 0x1c
+// bytes: type +0, state +4, ammo in clip +8, ammo total +0xc. Script slot numbers are index + 1.
+inline constexpr u32 kLCSPedWeaponsOffset = 0x594;
+inline constexpr u32 kLCSWeaponStride = 0x1c;
+inline constexpr u32 kLCSWeaponSlots = 10;
+
+// CPad::Pads[], from CPad::GetPad (0x08a96408). NewState and OldState are CControllerStates of 24
+// shorts; the offsets below are within one. is_button_pressed N (00E6, via 0x0887ba88) numbers
+// them like VCS: 0-3 sticks, 4-7 shoulders, 8-11 d-pad, 12 Start, 13 Select, 14 Square,
+// 15 Triangle, 16 Cross, 17 Circle. The struct has four more shorts between d-pad and Start
+// (+0x18..+0x1e), which the numbering skips: a second d-pad, read instead of the real one while
+// LCSAddr::PadDpadAsStick is set (and the real d-pad then stands in for the left stick).
+inline constexpr u32 kLCSPads = 0x08b89da0;
+inline constexpr u32 kLCSPadStride = 0xc0;
+inline constexpr u32 kLCSPadNewState = 0x02;
+inline constexpr u32 kLCSPadOldState = 0x34;
+enum LCSPadField : u32 {
+	kPadLeftX = 0x00, kPadLeftY = 0x02, kPadRightX = 0x04, kPadRightY = 0x06,
+	kPadL1 = 0x08, kPadL2 = 0x0a, kPadR1 = 0x0c, kPadR2 = 0x0e,
+	kPadDUp = 0x10, kPadDDown = 0x12, kPadDLeft = 0x14, kPadDRight = 0x16,
+	kPadAltDUp = 0x18, kPadAltDDown = 0x1a, kPadAltDLeft = 0x1c, kPadAltDRight = 0x1e,
+	kPadStart = 0x20, kPadSelect = 0x22, kPadSquare = 0x24, kPadTriangle = 0x26,
+	kPadCross = 0x28, kPadCircle = 0x2a, kPadLeftShock = 0x2c, kPadRightShock = 0x2e,
+};
+
 // How to interpret the bytes at an address.
 enum class LCSAddrType {
 	U8,
@@ -101,6 +161,7 @@ enum class LCSAddr {
 	PlayerHealth,      // Ped health, float.
 	PlayerInVehicle,   // Ped's bInVehicle. FindPlayerVehicle returns 0 unless this is set.
 	PlayerVehicle,     // Ped's m_pMyVehicle. Only meaningful while PlayerInVehicle is set.
+	WeaponSlot,        // Ped's m_currentWeapon: index into m_weapons[] (kLCSPedWeaponsOffset).
 
 	// --- Timer ---
 	TimeInMs,          // CTimer::m_snTimeInMilliseconds. Game clock, follows the system clock.
@@ -120,6 +181,18 @@ enum class LCSAddr {
 	CamFOV,            // Cams[0].FOV, degrees. Look rates scale with FOV/80.
 	WeaponCamMode,     // TheCamera.PlayerWeaponMode.Mode. Using1stPersonWeaponMode tests it.
 	LookSensitivity,   // Squared in the on-foot look response.
+
+	// --- Pad 0 (kLCSPads) ---
+	PadLeftX,          // NewState.LeftStickX: the nub.
+	PadLeftY,
+	PadDPadUp,
+	PadDPadDown,
+	PadDPadLeft,
+	PadDPadRight,
+	PadMode,           // CPad::Mode. LookAround* read the stick only while it is below 4.
+	PadDisableControls, // CPad::DisablePlayerControls. Every action getter returns 0 while set.
+	PadDpadAsStick,    // u8. Stick getters read the d-pad, d-pad getters the second d-pad.
+	InvertLook,        // u8. LookAroundUpDown negates the stick while set.
 
 	Count,
 };
@@ -147,18 +220,29 @@ inline constexpr LCSAddrEntry kLCSAddresses[] = {
 	{ LCSAddr::PlayerHealth,    "PlayerHealth",    LCSAddrType::Float, 0x4b8,      LCSAddr::PlayerBase, "ped+0x4b8. get_player_health (022A) reads it" },
 	{ LCSAddr::PlayerInVehicle, "PlayerInVehicle", LCSAddrType::U8,    0x538,      LCSAddr::PlayerBase, "ped+0x538. FindPlayerVehicle tests it" },
 	{ LCSAddr::PlayerVehicle,   "PlayerVehicle",   LCSAddrType::U32,   0x534,      LCSAddr::PlayerBase, "ped+0x534. Stale when PlayerInVehicle is 0" },
+	{ LCSAddr::WeaponSlot,      "WeaponSlot",      LCSAddrType::U8,    0x6b8,      LCSAddr::PlayerBase, "ped+0x6b8. get_current_char_weapon (0475) indexes m_weapons with it" },
 	{ LCSAddr::TimeInMs,        "TimeInMs",        LCSAddrType::U32,   0x08b5e144, kNoBase,             "Set to 1 by CTimer::Initialise (0x0891b1a4)" },
 	{ LCSAddr::TimeStep,        "TimeStep",        LCSAddrType::Float, 0x08b5e148, kNoBase,             "CTimer::Update clamps it to 3.333" },
 	{ LCSAddr::FrameCounter,    "FrameCounter",    LCSAddrType::U32,   0x08b5e174, kNoBase,             "Incremented at the end of CTimer::Update (0x0891b648)" },
 	{ LCSAddr::FrameVblanks,    "FrameVblanks",    LCSAddrType::U32,   0x08b56a90, kNoBase,             "Read by the 30 fps cap; zeroed after the wait" },
 	{ LCSAddr::ScriptParams,    "ScriptParams",    LCSAddrType::U32,   0x08dcf550, kNoBase,             "Passed to CollectParameters as $a3" },
 	{ LCSAddr::ActiveCam,       "ActiveCam",       LCSAddrType::U8,    0x08b8341f, kNoBase,             "TheCamera+0x7f. Indexes Cams[] (stride 0x290)" },
-	{ LCSAddr::CamMode,         "CamMode",         LCSAddrType::U16,   0x08b8354c, kNoBase,             "Cams[0]+0x1c. CCam::Process (0x088f0098) switches on it" },
+	{ LCSAddr::CamMode,         "CamMode",         LCSAddrType::U16,   0x08b8354c, kNoBase,             "Cams[0]+0x1c. CCam::Process (0x088efc44) switches on it" },
 	{ LCSAddr::CamPitch,        "CamPitch",        LCSAddrType::Float, 0x08b835ec, kNoBase,             "Cams[0]+0xbc (Alpha). Rate at +0xc0" },
 	{ LCSAddr::CamYaw,          "CamYaw",          LCSAddrType::Float, 0x08b835fc, kNoBase,             "Cams[0]+0xcc (Beta). Rate at +0xd0" },
 	{ LCSAddr::CamFOV,          "CamFOV",          LCSAddrType::Float, 0x08b835f4, kNoBase,             "Cams[0]+0xc4" },
 	{ LCSAddr::WeaponCamMode,   "WeaponCamMode",   LCSAddrType::U16,   0x08b83cf4, kNoBase,             "TheCamera+0x954 (PlayerWeaponMode.Mode)" },
 	{ LCSAddr::LookSensitivity, "LookSensitivity", LCSAddrType::Float, 0x08b3591c, kNoBase,             "Squared in Process_FollowPed's look response" },
+	{ LCSAddr::PadLeftX,        "PadLeftX",        LCSAddrType::U16,   0x08b89da2, kNoBase,             "Pads[0]+0x02. s16" },
+	{ LCSAddr::PadLeftY,        "PadLeftY",        LCSAddrType::U16,   0x08b89da4, kNoBase,             "Pads[0]+0x04. s16" },
+	{ LCSAddr::PadDPadUp,       "PadDPadUp",       LCSAddrType::U16,   0x08b89db2, kNoBase,             "Pads[0]+0x12" },
+	{ LCSAddr::PadDPadDown,     "PadDPadDown",     LCSAddrType::U16,   0x08b89db4, kNoBase,             "Pads[0]+0x14" },
+	{ LCSAddr::PadDPadLeft,     "PadDPadLeft",     LCSAddrType::U16,   0x08b89db6, kNoBase,             "Pads[0]+0x16" },
+	{ LCSAddr::PadDPadRight,    "PadDPadRight",    LCSAddrType::U16,   0x08b89db8, kNoBase,             "Pads[0]+0x18" },
+	{ LCSAddr::PadMode,         "PadMode",         LCSAddrType::U16,   0x08b89e22, kNoBase,             "Pads[0]+0x82 (ThirteenAG: lhu a2, 0x82)" },
+	{ LCSAddr::PadDisableControls, "PadDisableControls", LCSAddrType::U16, 0x08b89e26, kNoBase,       "Pads[0]+0x86 (ThirteenAG: lhu a1, 0x86)" },
+	{ LCSAddr::PadDpadAsStick,  "PadDpadAsStick",  LCSAddrType::U8,    0x08b56434, kNoBase,             "Tested by every CPad stick/d-pad getter (0x08a96c60..)" },
+	{ LCSAddr::InvertLook,      "InvertLook",      LCSAddrType::U8,    0x08b56433, kNoBase,             "LookAroundUpDown (0x08a98d8c) negates Y while set" },
 };
 
 static_assert(ARRAY_SIZE(kLCSAddresses) == (size_t)LCSAddr::Count,

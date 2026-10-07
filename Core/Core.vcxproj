@@ -927,6 +927,8 @@
     <ClCompile Include="LCS\LCSGame.cpp" />
     <ClCompile Include="LCS\LCSMemory.cpp" />
     <ClCompile Include="LCS\LCSState.cpp" />
+    <ClCompile Include="LCS\LCSFrameRate.cpp" />
+    <ClCompile Include="LCS\LCSSettings.cpp" />
     <ClCompile Include="Util\KL4E.cpp" />
     <ClCompile Include="Util\PSARUnpack.cpp" />
     <ClCompile Include="Util\PkgUnpack.cpp" />
@@ -1305,6 +1307,8 @@
     <ClInclude Include="LCS\LCSMemory.h" />
     <ClInclude Include="LCS\LCSMips.h" />
     <ClInclude Include="LCS\LCSState.h" />
+    <ClInclude Include="LCS\LCSFrameRate.h" />
+    <ClInclude Include="LCS\LCSSettings.h" />
     <ClInclude Include="Util\KL4E.h" />
     <ClInclude Include="Util\PSARUnpack.h" />
     <ClInclude Include="Util\PkgUnpack.h" />

@@ -23,6 +23,34 @@ namespace LCS {
 
 static LCSState g_state;
 
+const char *VehicleClassName(VehicleClass klass) {
+	switch (klass) {
+	case VehicleClass::Car: return "car";
+	case VehicleClass::Bike: return "bike";
+	case VehicleClass::Heli: return "heli";
+	case VehicleClass::Boat: return "boat";
+	case VehicleClass::Plane: return "plane";
+	default: return "unknown";
+	}
+}
+
+// The same test as GetVehicleAppearance (0x088a08c4).
+static VehicleClass ReadVehicleClass(u32 vehicle) {
+	const std::optional<u32> handling = ReadPointer(vehicle + kLCSVehicleHandlingOffset);
+	const std::optional<u32> flags = handling ? ReadU32(*handling + kLCSHandlingFlagsOffset) : std::nullopt;
+	if (!flags) {
+		return VehicleClass::Unknown;
+	}
+	switch (*flags & kLCSHandlingTypeMask) {
+	case 0: return VehicleClass::Car;
+	case kLCSHandlingIsBike: return VehicleClass::Bike;
+	case kLCSHandlingIsHeli: return VehicleClass::Heli;
+	case kLCSHandlingIsPlane: return VehicleClass::Plane;
+	case kLCSHandlingIsBoat: return VehicleClass::Boat;
+	default: return VehicleClass::Unknown;
+	}
+}
+
 void UpdateState(LCSState *state) {
 	*state = LCSState();
 
@@ -35,7 +63,13 @@ void UpdateState(LCSState *state) {
 			state->playerVehicle = vehicle ? ReadPointer(*vehicle) : std::nullopt;
 			if (state->playerVehicle) {
 				state->vehicleType = ReadU32(*state->playerVehicle + kLCSVehicleTypeOffset);
+				state->vehicleClass = ReadVehicleClass(*state->playerVehicle);
 			}
+		}
+
+		state->weaponSlot = ReadAddrAsU32(LCSAddr::WeaponSlot);
+		if (state->weaponSlot && *state->weaponSlot < kLCSWeaponSlots) {
+			state->weaponType = ReadU32(*state->playerBase + kLCSPedWeaponsOffset + *state->weaponSlot * kLCSWeaponStride);
 		}
 	}
 

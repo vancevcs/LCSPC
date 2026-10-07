@@ -19,8 +19,9 @@ entries.
 - **No hardcoded addresses outside `Core/LCS/LCSAddresses.h`.**
 - **It must build and run with any subset of addresses unset.**
 - **Minimal diff to upstream.** Every upstream edit is a few lines marked "Fork-specific".
-- **Don't push without asking.** Git identity for this repo is not decided yet: don't commit with
-  the global (personal) identity until a repo-local one is set.
+- **Anonymous commits, no remote.** The repo-local identity is `lcspc <lcspc@noreply.invalid>` with
+  `user.useConfigOnly`; never commit or tag with the global (personal) identity. There is no GitHub
+  remote; don't add one or push without asking.
 
 ## Build and run
 - `MSBuild Windows/PPSSPP.sln /t:PPSSPPWindows /p:Configuration=Release /p:Platform=x64 /m`
@@ -33,7 +34,10 @@ entries.
   address. `LCS::Init` logs a NOTICE when plugins are on.
 - The game is the ISO in the workspace root, or `../disc/` (extracted, bootable as a folder).
 - Static RE needs no emulator: `python Tools/lcsimage.py disasm|find|callers|xref ...` and
-  `python Tools/lcsscm.py`. Ghidra project: `%USERPROFILE%\lcs.gpr`.
+  `python Tools/lcsscm.py`. Ghidra project: `%USERPROFILE%\lcs.gpr`; decompile headlessly with
+  `../ghidra_scripts/DecompileAt.java` (usage in its header).
+- Live: `--debugger=1337`, then `python Tools/lcsws.py read|write|watch|press`. Drive the game with
+  button presses through it, never Windows keystrokes.
 
 ## Code map
 Core/LCS/ (no ImGui, UI, or renderer dependencies)
@@ -41,6 +45,8 @@ Core/LCS/ (no ImGui, UI, or renderer dependencies)
   LCSMemory       optional reads; a bad address is never fatal
   LCSState        per-tick decoded state, optional per field
   LCSGame         lifecycle + tick; the only entry point the rest of PPSSPP sees
+  LCSSettings     PSP/SYSTEM/lcs.ini
+  LCSFrameRate    60 fps (cap + millisecond carry)
   LCSMips.h       encoders for programs written into PSP memory
 UI/ImDebugger/ImLCS   the "LCS" debugger window (Debug -> LCS)
 Tools/lcsimage.py, Tools/lcsscm.py   offline EBOOT image and script-opcode map
@@ -65,4 +71,5 @@ Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
 | File | Covers | Read before |
 |---|---|---|
 | docs/LCS_ADDRESSES.md | every address, how found, how confirmed, what was ruled out | adding or using an address |
-| docs/lcs/architecture.md | the gate, seams, files, build lists | adding a hook into PPSSPP |
+| docs/lcs/architecture.md | the gate, seams, files, build lists, how to patch code | adding a hook into PPSSPP |
+| docs/lcs/frame-rate.md | 60 fps: what it patches, measurements, what's unchecked | touching CTimer or the frame wait |

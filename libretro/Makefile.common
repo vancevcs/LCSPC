@@ -904,6 +904,8 @@ SOURCES_CXX += \
 	       $(COREDIR)/LCS/LCSGame.cpp \
 	       $(COREDIR)/LCS/LCSMemory.cpp \
 	       $(COREDIR)/LCS/LCSState.cpp \
+	       $(COREDIR)/LCS/LCSFrameRate.cpp \
+	       $(COREDIR)/LCS/LCSSettings.cpp \
 	       $(COREDIR)/Util/KL4E.cpp \
 	       $(COREDIR)/Util/PSARUnpack.cpp \
 	       $(COREDIR)/Util/PkgUnpack.cpp \

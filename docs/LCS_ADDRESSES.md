@@ -109,11 +109,77 @@ pointer is not cleared on foot, so `LCSState` reads it only while the flag is se
 
 `0x089d5808` (`FindPlayerEntity`) returns the vehicle when in one, else the ped.
 
-### Vehicle type: `vehicle + 0x344` - static, meaning unconfirmed
+**Live:** entering Vincenzo's car (Triangle, injected) set `ped+0x538` to 1 and `ped+0x534` to the
+car, and the camera went to mode 18.
 
-`0x089d5860` calls `FindPlayerVehicle` and returns it only if `vehicle+0x344 == 2`, which is
-re3's `FindPlayerTrain` (`VEHICLE_TYPE_TRAIN == 2` in GTA III). So `+0x344` is `m_vehType`. Which
-numbers mean car, boat and bike in LCS is not measured yet; `LCSState::vehicleType` is the raw value.
+### Vehicle class and model - live
+
+- `vehicle+0x344` is `m_vehType`: `0x089d5860` (re3's `FindPlayerTrain`) compares it with 2. Read 0
+  in Vincenzo's car, so 0 is a car, as in VC.
+- **The scripts classify by handling, not `m_vehType`.** `is_char_on_any_bike` (`047F`),
+  `is_player_in_any_heli` (`04AF`), `is_player_in_any_plane` (`04B1`), `is_boat` (`02A1`) and
+  `player driving_boat` (`04AD`) all call `0x088a08c4` (VC's `GetVehicleAppearance`):
+  `vehicle+0x150` is `pHandling`, and `handling+0xd0 & 0xf0000` is 0 car (returns 1), `0x10000`
+  bike (2), `0x20000` heli (3), `0x80000` boat (4), `0x40000` plane (5). `LCSState::vehicleClass`
+  does the same test. Vincenzo's car: flags `0x8002`, so car.
+- **Model index:** `entity+0x58` (s16). `is_car_model` (`013C`) compares it; the car read 152, the
+  player ped 0. VCS's `+0x56` reads garbage here. The vehicle pool pointer is `0x08b4c540`
+  (`GetAt` `0x08afb924`), next to the ped pool's `0x08b4c53c`.
+- **Entity type:** `entity+0x44`, bits `0x0e` >> 1: ped 3 (read `0x9a446`), vehicle 2 (read
+  `0x8198204`). The same encoding as VCS's, four bytes earlier. `Process_FollowPed` tests
+  `(+0x44 & 0xe) == 6` for "the target is a ped".
+
+### Weapons - static (Toni starts the first mission unarmed, so all slots read 0)
+
+`get_current_char_weapon` (`0475`, `0x088e72bc`): `lb $a0, 0x6b8(ped)` (current slot), then
+`lw 0x594(ped + slot*0x1c)`. So `CPed::m_weapons[]` starts at **`ped+0x594`**, stride 0x1c, 10
+slots, and `m_currentWeapon` is the byte at **`ped+0x6b8`**. `get_char_weapon_in_slot` (`04BD`)
+reads type at `0x578 + n*0x1c` and ammo at `0x584 + n*0x1c`, so script slot numbers are index + 1.
+CWeapon: type `+0`, state `+4`, clip `+8`, total `+0xc`; this matches ThirteenAG's `ped + 0x590`
+offsets shifted by 4. VCS: array `+0x58c`, slot byte `+0x789`.
+
+### Pad - live
+
+`CPad::GetPad` (`0x08a96408`): `Pads[]` at **`0x08b89da0`**, stride 0xc0. `NewState` at `+0x02`,
+`OldState` at `+0x34`, 24 shorts each:
+
+| `NewState+` | field | `is_button_pressed` N | | `NewState+` | field | N |
+|---|---|---|---|---|---|---|
+| 0x00 / 0x02 | left stick X / Y | 0 / 1 | | 0x18-0x1e | second d-pad | (none) |
+| 0x04 / 0x06 | right stick X / Y | 2 / 3 | | 0x20 / 0x22 | Start / Select | 12 / 13 |
+| 0x08 / 0x0a | L1 / L2 | 4 / 5 | | 0x24 / 0x26 | Square / Triangle | 14 / 15 |
+| 0x0c / 0x0e | R1 / R2 | 6 / 7 | | 0x28 / 0x2a | Cross / Circle | 16 / 17 |
+| 0x10-0x16 | d-pad Up, Down, Left, Right | 8-11 | | 0x2c / 0x2e | L3 / R3 | 18 / 19 |
+
+- **Found:** `is_button_pressed` (`00E6`) calls `0x0887ba88(script, pad, N)`, a switch from N to
+  these fields. So the script numbering is VCS's ([vcs-pad-button-enum]), and the struct also has
+  ThirteenAG's four extra shorts. Both were right; the numbering skips them.
+- **The extra shorts are a second d-pad.** Every stick and d-pad getter (`0x08a96c60`-`0x08a96d70`)
+  tests the byte at **`0x08b56434`**: while it is set, the left stick reads `(Right - Left) / 2`
+  and `(Down - Up) / 2` from the d-pad, and the d-pad getters read `+0x18..+0x1e` instead. This is
+  VCS's `CameraInputMode` mechanism. Read 0 in play.
+- `0x08b56433` (u8) inverts `LookAroundUpDown`.
+- `CPad::Mode` at `+0x82` (`LookAround*` read the stick only while it is below 4; read 2 in play),
+  `DisablePlayerControls` at `+0x86` (u16; read 160 while Toni was free to walk and enter the car,
+  so it is probably a bit mask, not a counter).
+- **Live:** holding D-Up over the debugger set `+0x12` (Pads[0]) to 255, D-Right `+0x18`, L `+0x0a`,
+  Cross `+0x2a`. **Start set nothing** in `NewState` within 0.15 s; not explained yet.
+
+### Heap sizing - static
+
+LCS sizes its world from free memory, the lever that decided VCS's draw distance
+([draw-distance.md] in the VCS docs):
+
+- `MainMemoryManager` (`0x08aa4af8`): `sceKernelCreateFpl` of `sceKernelMaxFreeMemSize() -
+  reserve`. The reserve is the word at `0x08b5666c`, 5.0 MB (`0x4e6666`) as shipped, raised to
+  **12 MB when more than 22 MB is free**.
+- `StreamingHeap` (`0x08a0b794`): what is left, minus 512 KB (minus `0x63800` under 8 MB free).
+- Both have a fixed-size branch (`0xc9a400` and `0x47ac00`) behind the byte `0x08b56668`, which
+  nothing writes.
+
+So unlike VCS (one fixed reserve), LCS already has a large-memory path in the retail code. What
+PPSSPP's partition gives it, and whether a larger streaming heap changes anything visible, is not
+measured yet.
 
 ### TimeInMs `0x08b5e144`, TimeStep `0x08b5e148`, FrameCounter `0x08b5e174` - live
 
@@ -132,11 +198,19 @@ skipping the intro cutscene restarts the counter from 0 (a new game re-initialis
 - `0x08b5e144` is ThirteenAG's `dword_8B5E144`, found there by the pattern
   `70 00 05 8E 23 20 85 00`, -8.
 
-### FrameVblanks `0x08b56a90` - static
+`CTimer::Update` starts at `0x0891b328`. It takes the frame delta in ms (a float from the timer
+object at `0x08e32db0`), converts it to ticks of 1/294912 s at `0x08b5e5b4`, adds
+`ticks * TimeScale / 294912` to `m_snTimeInMilliseconds` **as an integer**, and sets
+`TimeStep = ticks * TimeScale / 5898240`. It clamps `TimeStep` to [0.5, 3.333] and the ms advance
+to 60 per frame. The fraction lost to the integer is what [lcs/frame-rate.md](lcs/frame-rate.md)
+puts back.
+
+### FrameVblanks `0x08b56a90` - live
 
 The frame wait at `0x08ab3368` loops on `sceDisplayWaitVblankStart` until the word at `0x08b56a90`
-reaches 2 (`sltiu $a0, $a0, 2` at `0x08ab3378`, `kLCSFrameCapSite`), then zeroes it. The same
-function then enqueues the frame's display list (`sceGeListEnQueue` at `0x08ab3428`).
+reaches 2 (`sltiu $a0, $a0, 2` at `0x08ab3378`, `kLCSFrameCap`), then zeroes it. The same
+function then enqueues the frame's display list (`sceGeListEnQueue` at `0x08ab3428`). Patching the
+`sltiu` to 1 gives 60 fps; see [lcs/frame-rate.md](lcs/frame-rate.md).
 
 ### Camera
 
@@ -147,7 +221,7 @@ function then enqueues the frame's display list (`sceGeListEnQueue` at `0x08ab34
 |---|---|---|---|
 | `ActiveCam` (u8) | `TheCamera+0x7f` | `0x08b8341f` | 64 `lbu` uses; `0x08819708` multiplies it by 0x290 to index `Cams[]` |
 | `Cams[3]` | `TheCamera+0x190`, stride **0x290** | `0x08b83530` | same site: `Cams[ActiveCam].Mode` is `TheCamera+0x1ac` |
-| `Mode` (s16) | `CCam+0x1c` | `0x08b8354c` | `CCam::Process` (`0x088f0098`): `lh 0x1c(s0)`, 46-way switch, table `0x08b13da0` |
+| `Mode` (s16) | `CCam+0x1c` | `0x08b8354c` | `CCam::Process` (`0x088efc44`, switch at `0x088f0098`): `lh 0x1c(s0)`, 46-way switch, table `0x08b13da0` |
 | `Alpha` (pitch) | `CCam+0xbc` | `0x08b835ec` | `Process_FollowPed`: clamped between two limits, rate at `+0xc0` |
 | `FOV` | `CCam+0xc4` | `0x08b835f4` | `Process_FollowPed`: look rates scale by `FOV / 80` |
 | `Beta` (yaw) | `CCam+0xcc` | `0x08b835fc` | `Process_FollowPed`: wrapped to [0, 2PI), rate at `+0xd0` |
@@ -196,6 +270,12 @@ the vehicle mode (18) uses.
 | `FindPlayerPed` | `0x089d58b0` | 2nd: `9084e16c` | ThirteenAG: `C0 29 04 00 21 30 A5 00 21 28 A6 00 00 21 04 00 23 20 A4 00 ? ? ? ? ? ? ? ? 21 20 85 00 08 00 E0 03`, -8 |
 | `FindPlayerVehicle` | `0x089d57b4` | 2nd: `9084e16c` | same prefix, then `00 00 84 8C ? ? ? ? 00 00 00 00 38 05 85 90`, -8 |
 | `CTimer::Initialise` | `0x0891b1a4` | | the only caller of `sceKernelReferThreadProfiler` |
+| `CTimer::Update` | `0x0891b328` | | the writer of `m_FrameCounter` (`0x0891b648`); the carry patch is at `+0xc4` |
+| `CPad::GetPad` | `0x08a96408` | | called with 0 all over the pad code |
+| `CPad::LookAroundLeftRight` / `UpDown` | `0x08a98c8c` / `0x08a98d8c` | | ThirteenAG's camera pattern `34 00 80 14 ...` sits in the first |
+| `GetVehicleAppearance` | `0x088a08c4` | | called by every "is in any bike/heli/plane/boat" handler |
+| `CCam::Process` | `0x088efc44` (switch at `0x088f0098`) | | the 46-way switch on `Mode`; one caller, `0x08900fac` |
+| `MainMemoryManager` / `StreamingHeap` setup | `0x08aa4af8` / `0x08a0b794` | | `sceKernelMaxFreeMemSize` callers that pass the result to `sceKernelCreateFpl` |
 | `cAudioManager::Service` | `0x08a9a5e4` | | ThirteenAG: `14 00 BF AF ? ? ? ? 25 80 80 00 0C 00 04 92`, -8 |
 
 ## ThirteenAG's patterns against this build
@@ -229,7 +309,6 @@ From the EBOOT's stub table, names resolved against PPSSPP's own HLE tables:
 
 ## Not found yet
 
-The weapon slot (ThirteenAG: `ped+0x6b8`, u8) and weapon array (`ped+0x590 + slot*0x1c`), the
-aiming state, `CPad` (ThirteenAG's layout: `NewState` at `+0x02`, `OldState` at `+0x34`, `Mode` at
-`+0x82`, `DisablePlayerControls` at `+0x86`) and the `is_button_pressed N` numbering, the vehicle
-type numbers, and the menu/game state.
+The aiming state (lock-on vs free aim), the menu / pause / game state, why Start doesn't show in
+`NewState`, the meaning of `DisablePlayerControls`' bits, and a weapon in hand to confirm the weapon
+array live.

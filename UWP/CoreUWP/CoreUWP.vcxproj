@@ -344,6 +344,8 @@
     <ClInclude Include="..\..\Core\LCS\LCSMemory.h" />
     <ClInclude Include="..\..\Core\LCS\LCSMips.h" />
     <ClInclude Include="..\..\Core\LCS\LCSState.h" />
+    <ClInclude Include="..\..\Core\LCS\LCSFrameRate.h" />
+    <ClInclude Include="..\..\Core\LCS\LCSSettings.h" />
     <ClInclude Include="..\..\Core\Util\KL4E.h" />
     <ClInclude Include="..\..\Core\Util\PSARUnpack.h" />
     <ClInclude Include="..\..\Core\Util\PkgUnpack.h" />
@@ -671,6 +673,8 @@
     <ClCompile Include="..\..\Core\LCS\LCSGame.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSMemory.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSState.cpp" />
+    <ClCompile Include="..\..\Core\LCS\LCSFrameRate.cpp" />
+    <ClCompile Include="..\..\Core\LCS\LCSSettings.cpp" />
     <ClCompile Include="..\..\Core\Util\KL4E.cpp" />
     <ClCompile Include="..\..\Core\Util\PSARUnpack.cpp" />
     <ClCompile Include="..\..\Core\Util\PkgUnpack.cpp" />
