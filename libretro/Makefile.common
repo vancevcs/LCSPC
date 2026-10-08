@@ -583,6 +583,7 @@ SOURCES_CXX += \
 	$(GPUDIR)/Common/SoftwareTransformCommon.cpp \
 	$(GPUDIR)/Common/DepthBufferCommon.cpp \
 	$(GPUDIR)/Common/DepthRaster.cpp \
+	$(GPUDIR)/Common/LCSSmaa.cpp \
 	$(GPUDIR)/Common/StencilCommon.cpp \
 	$(GPUDIR)/Software/TransformUnit.cpp \
 	$(GPUDIR)/Software/GEMath.cpp \

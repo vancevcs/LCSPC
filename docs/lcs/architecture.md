@@ -29,6 +29,7 @@ NOTICE line, and Debug -> LCS shows the reason.
 | `LCS::Shutdown()` | `__KernelShutdown()`, before `__CtrlShutdown` | so held buttons can be released while sceCtrl is alive |
 | compat flag | `Core/Compatibility.h/.cpp`, `assets/compat.ini` | |
 | `LCS::WantsExtraWorldMemory()` | `InitMemorySizeForGame()` in `Core/PSPLoaders.cpp` | the partition is sized while the ISO loads, before `LCS::Init`; it reads `lcs.ini` itself (world-memory.md) |
+| `LCSSmaa` | `DrawEngineVulkan` (constructor, destructor, `DestroyDeviceObjects`, top of `Flush`) and `GPU_Vulkan::BeginHostFrame` | the seam between the world and the HUD is a flush, and the pass binds targets of its own (anti-aliasing.md) |
 | Debug -> LCS | `UI/ImDebugger/ImDebugger.cpp/.h` (menu item, draw call, `lcsOpen` ini key) | |
 | `LCS::HandleHostKey()` | `NativeKey()`, in the `passKeyThrough` branch, before `g_controlMapper.Key` | a claimed key must not also reach the mapper |
 | `LCS::HandleMouseDelta()` | `NativeMouseDelta()`, after the `bMouseControl` check, skipped while ImGui wants the mouse | mouse look only with PPSSPP's mouse control on |
@@ -50,6 +51,7 @@ Core/LCS/            no ImGui, UI or renderer dependencies
   LCSChaseCam        the camera on foot and in vehicles: two hooks and a program in CCamera::Process (chase-camera.md)
   LCSFreeAim         mouse free aim: the gun target, the camera's angles and a hook on the player's shot (free-aim.md)
   LCSMips.h          encoders for programs written into PSP memory
+GPU/Common/LCSSmaa  SMAA over the world before the HUD, Vulkan only (anti-aliasing.md)
 UI/ImDebugger/ImLCS  the Debug -> LCS window (state, table, input, aim, PSP pad, camera, scratchpad)
 UI/LCSDevInput       dev only: LCS_KEY_PIPE scripted keys and mouse
 Tools/lcsimage.py    the EBOOT relocated into a RAM image: find, disasm, callers, xref
@@ -88,7 +90,9 @@ through sceCtrl, which the game samples once a frame, so the tick is fine for th
 A new source file goes in all seven build files: `Core/CMakeLists.txt`, `Core/Core.vcxproj` and
 `.filters`, `UWP/CoreUWP/CoreUWP.vcxproj` and `.filters`, `android/jni/Android.mk`,
 `libretro/Makefile.common` (Core only). UI files: `UI/CMakeLists.txt`, `UI/UI.vcxproj` and
-`.filters`, `UWP/UI_UWP/UI_UWP.vcxproj` and `.filters`, `android/jni/Android.mk`.
+`.filters`, `UWP/UI_UWP/UI_UWP.vcxproj` and `.filters`, `android/jni/Android.mk`. GPU files:
+`GPU/CMakeLists.txt`, `GPU/GPU.vcxproj` and `.filters`, `UWP/GPU_UWP/GPU_UWP.vcxproj` and
+`.filters`, `android/jni/Android.mk`, `libretro/Makefile.common`.
 
 ## Seams not added yet
 

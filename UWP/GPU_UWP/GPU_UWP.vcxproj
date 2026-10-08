@@ -86,6 +86,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\..\GPU\Common\DepthRaster.h" />
+    <ClInclude Include="..\..\GPU\Common\LCSSmaa.h" />
     <ClInclude Include="..\..\GPU\Common\ReplacedTexture.h" />
     <ClInclude Include="..\..\GPU\Common\TextureReplacer.h" />
     <ClInclude Include="..\..\GPU\Common\TextureShaderCommon.h" />
@@ -155,6 +156,7 @@
   <ItemGroup>
     <ClCompile Include="..\..\GPU\Common\DepthBufferCommon.cpp" />
     <ClCompile Include="..\..\GPU\Common\DepthRaster.cpp" />
+    <ClCompile Include="..\..\GPU\Common\LCSSmaa.cpp" />
     <ClCompile Include="..\..\GPU\Common\ReplacedTexture.cpp" />
     <ClCompile Include="..\..\GPU\Common\TextureReplacer.cpp" />
     <ClCompile Include="..\..\GPU\Common\TextureShaderCommon.cpp" />

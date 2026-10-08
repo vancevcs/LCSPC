@@ -48,6 +48,7 @@ void LoadSettings() {
 	section->Get("FootChaseCamera", &g_settings.footChaseCamera);
 	section->Get("MouseFreeAim", &g_settings.freeAim);
 	section->Get("WorldMemory", &g_settings.worldMemory);
+	section->Get("AntiAliasing", &g_settings.antiAliasing);
 	NOTICE_LOG(Log::System, "LCS: settings loaded (FrameRate60 = %s, KeyboardMouse = %s, MouseLook = %s, MouseSensitivity = %g, VehicleChaseCamera = %s, FootChaseCamera = %s)",
 		g_settings.frameRate60 ? "true" : "false", g_settings.keyboardMouse ? "true" : "false",
 		g_settings.mouseLook ? "true" : "false", g_settings.mouseSensitivity,
@@ -77,6 +78,7 @@ void SaveSettings() {
 	section->Set("FootChaseCamera", g_settings.footChaseCamera);
 	section->Set("MouseFreeAim", g_settings.freeAim);
 	section->Set("WorldMemory", g_settings.worldMemory);
+	section->Set("AntiAliasing", g_settings.antiAliasing);
 	if (!ini.Save(SettingsPath())) {
 		ERROR_LOG(Log::System, "LCS: could not write %s", SettingsPath().c_str());
 	}

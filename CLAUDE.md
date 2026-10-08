@@ -51,6 +51,7 @@ Core/LCS/ (no ImGui, UI, or renderer dependencies)
   LCSChaseCam     the camera on foot and in vehicles, replaced inside CCamera::Process
   LCSFreeAim      mouse free aim: gun target + camera angles, and the player's shot down the reticle
   LCSMips.h       encoders for programs written into PSP memory
+GPU/Common/LCSSmaa    SMAA over the world before the HUD (Vulkan)
 UI/ImDebugger/ImLCS   the "LCS" debugger window (Debug -> LCS)
 UI/LCSDevInput        dev only: LCS_KEY_PIPE scripted keys and mouse (docs/lcs/input.md "Testing")
 Tools/lcsimage.py, Tools/lcsscm.py   offline EBOOT image and script-opcode map
@@ -58,7 +59,8 @@ Tools/lcsimage.py, Tools/lcsscm.py   offline EBOOT image and script-opcode map
 Seams: init/shutdown in `__KernelInit`/`__KernelShutdown`; fingerprint in `__KernelLoadELFFromPtr`;
 tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys and mouse in `NativeKey` /
 `NativeMouseDelta`; the frame boundary in `sceKernelGetSystemTimeWide`; by-address hooks in
-`Core/HLE/ReplaceTables.*`; the memory partition in `InitMemorySizeForGame`; compat flag in
+`Core/HLE/ReplaceTables.*`; the memory partition in `InitMemorySizeForGame`; SMAA in
+`DrawEngineVulkan::Flush`; compat flag in
 Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
 
 ## Working rules
@@ -90,3 +92,4 @@ Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
 | docs/lcs/chase-camera.md | the chase camera: hook sites, the program, on foot / vehicle framing, savestates, the fixtures | touching the camera or adding a hook |
 | docs/lcs/free-aim.md | the game's free aim, the gun target, the fire hook, measurements, the armed fixtures | touching aiming or shooting |
 | docs/lcs/world-memory.md | the PSP-2000 partition and the game's own larger streaming heap | touching memory size or draw distance |
+| docs/lcs/anti-aliasing.md | SMAA, where it runs, the world drawn in pieces, the debug views | touching LCSSmaa or the draw engine seam |

@@ -36,6 +36,7 @@
 #include "Core/LCS/LCSMemory.h"
 #include "Core/LCS/LCSSettings.h"
 #include "Core/LCS/LCSState.h"
+#include "GPU/Common/LCSSmaa.h"
 #include "UI/ImDebugger/ImDebugger.h"
 #include "UI/ImDebugger/ImLCS.h"
 
@@ -144,6 +145,18 @@ void ImLCSWindow::DrawStatus() {
 	const u32 reserve = LCS::ReadU32(LCS::kLCSMainMemoryReserve).value_or(0);
 	ImGui::TextDisabled("(%d MB partition, %.1f MB reserve; takes a restart)", (int)(Memory::g_MemorySize >> 20),
 		reserve / (1024.0f * 1024.0f));
+
+	bool smaa = LCS::Settings().antiAliasing;
+	if (ImGui::Checkbox("SMAA", &smaa)) {
+		LCS::Settings().antiAliasing = smaa;
+		LCS::SaveSettings();
+	}
+	ImGui::SameLine();
+	static const char *kViews[] = { "as it ships", "split: left smoothed", "blend weights" };
+	ImGui::SetNextItemWidth(170.0f);
+	ImGui::Combo("##smaaview", &LCSSmaa::DebugView(), kViews, 3);
+	ImGui::SameLine();
+	ImGui::TextDisabled("(%s; Vulkan only)", LCSSmaa::IsActive() ? "running" : "off");
 }
 
 void ImLCSWindow::DrawDecodedState() {

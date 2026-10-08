@@ -37,6 +37,7 @@
 #include "GPU/Common/DrawEngineCommon.h"
 #include "GPU/Common/ShaderUniforms.h"
 #include "GPU/Vulkan/DrawEngineVulkan.h"
+#include "GPU/Common/LCSSmaa.h"  // Fork-specific
 #include "GPU/Vulkan/TextureCacheVulkan.h"
 #include "GPU/Vulkan/ShaderManagerVulkan.h"
 #include "GPU/Vulkan/PipelineManagerVulkan.h"
@@ -51,6 +52,7 @@ enum {
 DrawEngineVulkan::DrawEngineVulkan(Draw::DrawContext *draw)
 	: draw_(draw) {
 	decOptions_.expand8BitNormalsToFloat = false;
+	LCSSmaa::Init();  // Fork-specific
 }
 
 void DrawEngineVulkan::InitDeviceObjects() {
@@ -93,6 +95,7 @@ void DrawEngineVulkan::InitDeviceObjects() {
 
 DrawEngineVulkan::~DrawEngineVulkan() {
 	DestroyDeviceObjects();
+	LCSSmaa::Shutdown();  // Fork-specific
 }
 
 void DrawEngineVulkan::DestroyDeviceObjects() {
@@ -128,6 +131,8 @@ void DrawEngineVulkan::DestroyDeviceObjects() {
 		vulkan->Delete().QueueDeleteSampler(nullSampler_);
 
 	renderManager->DestroyPipelineLayout(pipelineLayout_);
+	// Fork-specific: the LCS SMAA pass's pipelines and framebuffers, while the context still exists.
+	LCSSmaa::DeviceLost();
 }
 
 void DrawEngineVulkan::DeviceLost() {
@@ -201,6 +206,17 @@ void DrawEngineVulkan::Invalidate(InvalidationCallbackFlags flags) {
 void DrawEngineVulkan::Flush() {
 	if (!numDrawVerts_) {
 		return;
+	}
+
+	// Fork-specific: GTA: Liberty City Stories' SMAA, over the finished world before the HUD (the
+	// first 2D flush after 3D into the game's framebuffer). It binds targets of its own, so the
+	// framebuffer manager takes the game's back. Does nothing unless the LCS layer is active.
+	if (LCSSmaa::IsActive()) {
+		VirtualFramebuffer *vfb = framebufferManager_->GetCurrentRenderVFB();
+		if (LCSSmaa::OnFlush(draw_, gstate.isModeThrough(), vfb ? vfb->fbo : nullptr,
+				vfb ? vfb->bufferWidth : 0, vfb ? vfb->bufferHeight : 0)) {
+			framebufferManager_->RebindFramebuffer("lcs_smaa_done");
+		}
 	}
 
 	VulkanRenderManager *renderManager = (VulkanRenderManager *)draw_->GetNativeObject(Draw::NativeObject::RENDER_MANAGER);

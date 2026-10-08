@@ -48,6 +48,8 @@ struct LCSSettings {
 	// 5MB. Read at boot (WantsExtraWorldMemory), so a change takes a restart; and savestates made
 	// with it one way don't load the other.
 	bool worldMemory = false;
+	// SMAA over the world, before the HUD (GPU/Common/LCSSmaa; Vulkan only).
+	bool antiAliasing = true;
 };
 
 LCSSettings &Settings();

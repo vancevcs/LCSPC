@@ -41,6 +41,7 @@
 #include "GPU/Vulkan/TextureCacheVulkan.h"
 #include "Common/GPU/Vulkan/VulkanRenderManager.h"
 #include "Common/GPU/Vulkan/VulkanQueueRunner.h"
+#include "GPU/Common/LCSSmaa.h"  // Fork-specific
 
 GPU_Vulkan::GPU_Vulkan(GraphicsContext *gfxCtx, Draw::DrawContext *draw)
 	: GPUCommonHW(gfxCtx, draw), drawEngine_(draw) {
@@ -251,6 +252,7 @@ void GPU_Vulkan::BeginHostFrame(const DisplayLayoutConfig &config) {
 	int curFrame = vulkan->GetCurFrame();
 
 	framebufferManager_->BeginFrame(config);
+	LCSSmaa::BeginFrame();  // Fork-specific: re-arms the LCS SMAA pass for the frame.
 
 	gstate_c.Dirty(DIRTY_ALL);
 
