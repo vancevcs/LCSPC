@@ -44,6 +44,7 @@ merge   brings a hand-made pack in (default: texturereplacements/ beside ppsspp/
 import argparse
 import csv
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -188,27 +189,44 @@ def tier_of(distance, margin):
     return 'review'
 
 
+def rank(android, v, alpha, mean, fine, top=24):
+    """The HD textures nearest one dumped texture, best first: [(index, distance)]. The coarse
+    score runs over all of them, the second look over the best `top`."""
+    av, aa, am, af = android['vectors'], android['alphas'], android['means'], android['fine']
+    colour = COLOUR_WEIGHT * np.linalg.norm(am - mean, axis=1) / np.sqrt(3.0)
+    coarse = 1.0 - av @ v + ALPHA_PENALTY * (aa != alpha) + colour
+    order = np.argsort(coarse)[:top]
+    # The second look: the same comparison on a finer grey grid, averaged in.
+    d = {int(j): 0.5 * (coarse[j] + (1.0 - float(af[j] @ fine)) + ALPHA_PENALTY * (aa[j] != alpha) + colour[j])
+         for j in order}
+    return sorted(d.items(), key=lambda kv: kv[1])
+
+
+def same_picture(android, i, j):
+    """Two HD textures that are one picture filed twice (or resized, or recoloured)."""
+    av, af = android['vectors'], android['fine']
+    return 0.5 * ((1.0 - float(av[i] @ av[j])) + (1.0 - float(af[i] @ af[j]))) <= SAME_PICTURE
+
+
+def margin_of(android, ranked):
+    """The gap from the best candidate to the best one that is a different picture: the Android
+    set files the same art in several TXDs."""
+    best, d_best = ranked[0]
+    others = [d for j, d in ranked[1:] if not same_picture(android, best, j)]
+    return float(others[0] - d_best) if others else 1.0
+
+
 def cmd_match(args):
     android = load_android(args.work)
     dump = load_dump(args.dump, args.work)
-    av, aa, am, af = android['vectors'], android['alphas'], android['means'], android['fine']
     rows = []
     for h, ((w, ht), v, alpha, mean, std, fine) in dump.items():
         if min(w, ht) < MIN_DUMP_SIZE:
             continue
-        colour = COLOUR_WEIGHT * np.linalg.norm(am - mean, axis=1) / np.sqrt(3.0)
-        coarse = 1.0 - av @ v + ALPHA_PENALTY * (aa != alpha) + colour
-        order = np.argsort(coarse)[:24]
-        # The second look: the same comparison on a finer grey grid, averaged in.
-        d = {int(j): 0.5 * (coarse[j] + (1.0 - float(af[j] @ fine)) + ALPHA_PENALTY * (aa[j] != alpha) + colour[j])
-             for j in order}
-        ranked = sorted(d, key=d.get)
-        best = ranked[0]
-        # The margin is to the best candidate that is a different picture, not the same art filed
-        # in another TXD.
-        others = [j for j in ranked[1:]
-                  if 0.5 * ((1.0 - float(av[j] @ av[best])) + (1.0 - float(af[j] @ af[best]))) > SAME_PICTURE]
-        margin = float(d[others[0]] - d[best]) if others else 1.0
+        ranked = rank(android, v, alpha, mean, fine)
+        best = ranked[0][0]
+        margin = margin_of(android, ranked)
+        d = dict(ranked)
         tier = tier_of(d[best], margin) if std >= MIN_DETAIL else 'review'
         rows.append(dict(dump=h, dump_size='%dx%d' % (w, ht), android=str(android['keys'][best]),
                          android_hash='%08x' % android['hashes'][best],
@@ -386,27 +404,35 @@ def cmd_bind(args):
 
 # --- dds ---
 
+def find_texconv():
+    return shutil.which('texconv') or shutil.which('texconv.exe')
+
+
+def png_to_dds(texconv, path):
+    """One PNG -> a DDS beside it (BC7 with alpha, BC1 without, one level), the PNG removed.
+    Returns the DDS path, or None with the PNG left as it was."""
+    with Image.open(path) as img:
+        alpha = img.mode == 'RGBA' and np.asarray(img.getchannel('A')).min() < 250
+    fmt = 'BC7_UNORM' if alpha else 'BC1_UNORM'
+    r = subprocess.run([texconv, '-nologo', '-y', '-m', '1', '-f', fmt, '-o', os.path.dirname(path), path],
+                       capture_output=True, text=True)
+    dds = os.path.splitext(path)[0] + '.dds'
+    if r.returncode != 0 or not os.path.exists(dds):
+        print('texconv failed on %s: %s' % (path, (r.stdout + r.stderr).strip()[-200:]))
+        return None
+    os.remove(path)
+    return dds
+
+
 def cmd_dds(args):
-    texconv = shutil.which('texconv') or shutil.which('texconv.exe')
+    texconv = find_texconv()
     if not texconv:
         sys.exit('texconv not found (winget install Microsoft.DirectXTex)')
     root = os.path.join(args.pack, PACK_SUBDIR)
     pngs = []
     for d, _, files in os.walk(root):
         pngs += [os.path.join(d, f) for f in files if f.lower().endswith('.png')]
-    converted = 0
-    for path in pngs:
-        with Image.open(path) as img:
-            alpha = img.mode == 'RGBA' and np.asarray(img.getchannel('A')).min() < 250
-        fmt = 'BC7_UNORM' if alpha else 'BC1_UNORM'
-        r = subprocess.run([texconv, '-nologo', '-y', '-m', '1', '-f', fmt, '-o', os.path.dirname(path), path],
-                           capture_output=True, text=True)
-        dds = os.path.splitext(path)[0] + '.dds'
-        if r.returncode != 0 or not os.path.exists(dds):
-            print('texconv failed on %s: %s' % (path, (r.stdout + r.stderr).strip()[-200:]))
-            continue
-        os.remove(path)
-        converted += 1
+    converted = sum(1 for path in pngs if png_to_dds(texconv, path))
     ini = os.path.join(args.pack, 'textures.ini')
     if os.path.exists(ini):
         text = open(ini, encoding='utf-8').read()
@@ -420,6 +446,123 @@ def cmd_dds(args):
         with open(ini, 'w', encoding='utf-8') as f:
             f.write('\n'.join(out) + '\n')
     print('converted %d of %d PNGs to DDS' % (converted, len(pngs)))
+
+
+# --- the manual block ---
+
+MANUAL = 'manual'
+MARK_RE = re.compile(r'^#\s*---\s*(begin|end)\s+(.+?)\s*---\s*$')
+
+
+def handmade(pack):
+    """Hashes a merged hand-made pack's block holds: those are changed in that pack, not here."""
+    out = set()
+    block, section = None, ''
+    ini = os.path.join(pack, 'textures.ini')
+    if not os.path.exists(ini):
+        return out
+    for line in open(ini, encoding='utf-8', errors='replace').read().splitlines():
+        t = line.strip()
+        m = MARK_RE.match(t)
+        if m:
+            block = m.group(2) if m.group(1) == 'begin' else None
+        elif t.startswith('['):
+            section = t.lower()
+        elif section == '[hashes]' and block and block != MANUAL and '=' in t and not t.startswith('#'):
+            out.add(t.split('=', 1)[0].strip().lower())
+    return out
+
+
+def set_manual(pack, values, comments=None):
+    """Writes hashes into the ini's manual block, the one the hand-picking tools own
+    (lcstxd, lcstxdweb): {hash: value}, where None takes the hash out and '' is "no HD" (an
+    empty value, which PPSSPP reads as no replacement). Any other line for the same hash is
+    dropped, except in a hand-made block: those hashes are refused. A comment goes above its
+    entry as '# <hash> <comment>' and leaves with it.
+
+    `bind` skips hashes the ini already has and `merge` only replaces its own block, so what is
+    written here stays. Returns ({hash: the value it had, or None}, [refused hashes])."""
+    ini = os.path.join(pack, 'textures.ini')
+    lines = open(ini, encoding='utf-8').read().splitlines() if os.path.exists(ini) else DEFAULT_INI_HEAD.splitlines()
+    values = {k.lower(): v for k, v in values.items()}
+    comments = {k.lower(): v for k, v in (comments or {}).items()}
+    refused = sorted(set(values) & handmade(pack))
+    for k in refused:
+        values.pop(k)
+    old = {k: None for k in values}
+    out = []
+    section, block = '', None
+    manual_end = hashes_at = after_blocks = None
+    for line in lines:
+        t = line.strip()
+        m = MARK_RE.match(t)
+        if m:
+            if m.group(1) == 'begin':
+                block = m.group(2)
+            else:
+                if block == MANUAL:
+                    manual_end = len(out)
+                elif section == '[hashes]':
+                    after_blocks = len(out) + 1
+                block = None
+            out.append(line)
+            continue
+        if t.startswith('['):
+            section = t.lower()
+            if section == '[hashes]':
+                hashes_at = len(out) + 1
+        elif section == '[hashes]' and not (block and block != MANUAL):
+            if '=' in t and not t.startswith('#'):
+                key = t.split('=', 1)[0].strip().lower()
+                if key in values:
+                    old[key] = t.split('=', 1)[1].strip()
+                    if block == MANUAL and out and out[-1].strip().lower().startswith('# ' + key):
+                        out.pop()
+                    continue
+        out.append(line)
+    entries = []
+    for k, v in values.items():
+        if v is None:
+            continue
+        if comments.get(k):
+            entries.append('# %s %s' % (k, comments[k]))
+        entries.append('%s = %s' % (k, v))
+    if entries:
+        if manual_end is None:
+            if hashes_at is None:
+                out += ['', '[hashes]']
+                hashes_at = len(out)
+            at = after_blocks if after_blocks is not None else hashes_at
+            out[at:at] = ['# --- begin %s ---' % MANUAL,
+                          '# Picked by hand (Tools/lcstxd.py, lcstxdweb.py). lcshd bind leaves these '
+                          'hashes alone; an empty value is "no HD".',
+                          '# --- end %s ---' % MANUAL]
+            manual_end = at + 2
+        out[manual_end:manual_end] = entries
+    with open(ini, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(out) + '\n')
+    return old, refused
+
+
+def drop_unused(pack, rels):
+    """Deletes pack files the hand-picking tools wrote (android/...~<8 hex>, pc/...) that no
+    line names any more."""
+    used = set()
+    ini = os.path.join(pack, 'textures.ini')
+    if os.path.exists(ini):
+        for line in open(ini, encoding='utf-8', errors='replace').read().splitlines():
+            if '=' in line and not line.strip().startswith('#'):
+                used.add(line.split('=', 1)[1].strip().replace('\\', '/').lower())
+    root = os.path.normcase(os.path.abspath(pack))
+    for rel in rels:
+        if not rel or rel.replace('\\', '/').lower() in used:
+            continue
+        r = rel.replace('\\', '/').lower()
+        if not (r.startswith('pc/') or re.search(r'^%s/.*~[0-9a-f]{8}\.(dds|png)$' % PACK_SUBDIR, r)):
+            continue
+        path = os.path.normcase(os.path.abspath(os.path.join(pack, rel)))
+        if path.startswith(root + os.sep) and os.path.isfile(path):
+            os.remove(path)
 
 
 # --- merge ---

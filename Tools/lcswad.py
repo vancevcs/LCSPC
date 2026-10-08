@@ -169,15 +169,32 @@ def decode_rgba4444(data, w, h):
     return np.stack([((v >> s) & 0xF).astype(np.uint8) * 17 for s in (12, 8, 4, 0)], -1)
 
 
-def decode_pvr(data):
-    """The top level of a legacy PVR -> (h, w, 4) uint8 RGBA, and its header."""
-    hd = pvr_header(data)
-    body = data[52:]
+def pvr_level(hd, level):
+    """Where one level of a legacy PVR is: (offset from the file's start, bytes, width, height).
+    The header's mip count is the levels after the top one; they follow it, halving down to 1."""
+    if hd['format'] not in (PVR_ETC1, PVR_RGBA4444):
+        raise ValueError('PVR pixel format %#x is not handled' % hd['format'])
+    offset, w, h = 52, hd['width'], hd['height']
+    for i in range(min(level, hd['mips']) + 1):
+        size = max(1, (w + 3) // 4) * max(1, (h + 3) // 4) * 8 if hd['format'] == PVR_ETC1 else w * h * 2
+        if i == min(level, hd['mips']):
+            return offset, size, w, h
+        offset += size
+        w, h = max(1, w // 2), max(1, h // 2)
+
+
+def decode_level(hd, body, w, h):
+    """One level's bytes -> (h, w, 4) uint8 RGBA."""
     if hd['format'] == PVR_ETC1:
-        return decode_etc1(body, hd['width'], hd['height']), hd
-    if hd['format'] == PVR_RGBA4444:
-        return decode_rgba4444(body, hd['width'], hd['height']), hd
-    raise ValueError('PVR pixel format %#x is not handled' % hd['format'])
+        return decode_etc1(body, w, h)
+    return decode_rgba4444(body, w, h)
+
+
+def decode_pvr(data, level=0):
+    """One level of a legacy PVR (0 is the top) -> (h, w, 4) uint8 RGBA, and its header."""
+    hd = pvr_header(data)
+    offset, size, w, h = pvr_level(hd, level)
+    return decode_level(hd, data[offset:offset + size], w, h), hd
 
 
 # --- Names ---

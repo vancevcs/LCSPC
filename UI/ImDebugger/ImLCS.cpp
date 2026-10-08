@@ -157,6 +157,16 @@ void ImLCSWindow::DrawStatus() {
 	ImGui::Combo("##smaaview", &LCSSmaa::DebugView(), kViews, 3);
 	ImGui::SameLine();
 	ImGui::TextDisabled("(%s; Vulkan only)", LCSSmaa::IsActive() ? "running" : "off");
+
+	bool dumpTextures = LCS::Settings().dumpTextures;
+	if (ImGui::Checkbox("Texture dump", &dumpTextures)) {
+		LCS::Settings().dumpTextures = dumpTextures;
+		LCS::ApplyTextureDump();
+		LCS::SaveSettings();
+	}
+	ImGui::SameLine();
+	ImGui::TextDisabled("(PPSSPP's Save new textures: %s; ticked turns it on at every boot)",
+		g_Config.bSaveNewTextures ? "on" : "off");
 }
 
 void ImLCSWindow::DrawDecodedState() {

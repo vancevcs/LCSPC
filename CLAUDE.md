@@ -58,6 +58,8 @@ UI/LCSDevInput        dev only: LCS_KEY_PIPE scripted keys and mouse (docs/lcs/i
 Tools/lcsimage.py, Tools/lcsscm.py   offline EBOOT image and script-opcode map
 Tools/lcsmenuart.py, lcsmenusfx.py    the menu's backdrop and sounds, from the game's own files
 Tools/lcswad.py, lcshd.py   the Android OBB (container, PVR) and the HD texture pipeline
+Tools/lcstxd.py       texture tool ported from VCS (+ lcsrw, lcsmatch): PC packs + OBB, auto-assign
+Tools/lcstxdweb.py    the OBB's HD textures in the browser pane, manual binds
 
 Seams: init/shutdown in `__KernelInit`/`__KernelShutdown`; fingerprint in `__KernelLoadELFFromPtr`;
 tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys and mouse in `NativeKey` /

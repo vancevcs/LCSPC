@@ -112,6 +112,8 @@ void NoteBootExecutable(const u8 *elf, size_t size) {
 	g_inactiveReason.clear();
 	// Only once we know this is the game: no other boot reads or creates lcs.ini.
 	LoadSettings();
+	// Before the GPU comes up, which is when the texture cache reads it.
+	ApplyTextureDump();
 	int known = 0;
 	for (const LCSAddrEntry &entry : kLCSAddresses) {
 		if (IsAddrSet(entry.id)) {

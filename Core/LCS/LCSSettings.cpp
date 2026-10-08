@@ -27,6 +27,7 @@
 #include "Common/System/System.h"
 #include "Core/Config.h"
 #include "Core/ConfigValues.h"
+#include "Core/ELF/ParamSFO.h"
 #include "Core/System.h"
 #include "Core/LCS/LCSChaseCam.h"
 #include "Core/LCS/LCSSettings.h"
@@ -370,6 +371,12 @@ const std::vector<Option> &Options() {
 			"Health, armour, money, the weapon and the clock.", &g_placeholder.hud);
 		placeholder();
 
+		// --- Developer (no menu page) ---
+
+		addBool(OptionPage::Developer, "DumpTextures", "Texture dump",
+			"Saves every texture drawn for the first time to TEXTURES/ULUS10041/new, for the HD pack.",
+			&s.dumpTextures, false, false, &ApplyTextureDump);
+
 		return opts;
 	}();
 	return options;
@@ -425,6 +432,22 @@ bool WantsExtraWorldMemory() {
 	const Section *section = ini.GetSection("Settings");
 	bool value = false;
 	return section && section->Get("WorldMemory", &value) && value;
+}
+
+void ApplyTextureDump() {
+	if (!g_settings.dumpTextures) {
+		return;
+	}
+	if (!g_Config.bSaveNewTextures || !g_Config.bIgnoreTextureFilenames) {
+		g_Config.bSaveNewTextures = true;
+		// While saving, PPSSPP checks the pack's file names for capitals and puts up a six-second
+		// warning on every load of the ini. The hand-made pack is named in mixed case
+		// (HUD/Health.png), which Windows doesn't mind; this setting only skips that check.
+		g_Config.bIgnoreTextureFilenames = true;
+		// At boot the GPU isn't up yet and reads it when it is; a running one rereads it on this.
+		System_PostUIMessage(UIMessage::GPU_CONFIG_CHANGED);
+	}
+	NOTICE_LOG(Log::System, "LCS: texture dump on - new textures go to TEXTURES/%s/new", g_paramSFO.GetDiscID().c_str());
 }
 
 void SaveSettings() {

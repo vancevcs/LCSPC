@@ -54,6 +54,10 @@ struct LCSSettings {
 	bool worldMemory = false;
 	// SMAA over the world, before the HUD (GPU/Common/LCSSmaa; Vulkan only).
 	bool antiAliasing = true;
+	// PPSSPP's "Save new textures", turned on at every boot: each texture drawn for the first time
+	// goes to TEXTURES/ULUS10041/new, which the HD pack is bound from (Tools/lcshd.py), so every
+	// session adds to it. Off leaves PPSSPP's own checkbox in charge.
+	bool dumpTextures = true;
 };
 
 LCSSettings &Settings();
@@ -62,6 +66,8 @@ void SaveSettings();
 // lcs.ini's WorldMemory, read straight from the file: the partition is sized while the ISO loads,
 // before the layer activates or loads its settings.
 bool WantsExtraWorldMemory();
+// Turns PPSSPP's "Save new textures" on if dumpTextures is set. Never turns it off.
+void ApplyTextureDump();
 
 // --- The front end's option table ---
 //
@@ -89,6 +95,7 @@ enum class OptionPage {
 	Graphics,
 	GraphicsAdvanced,  // the graphics rows a player rarely touches, one page down
 	Gameplay,
+	Developer,  // in no menu: saved in lcs.ini, edited in Debug -> LCS
 };
 
 struct Option {

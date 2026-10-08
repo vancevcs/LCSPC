@@ -52,6 +52,9 @@ Move-while-aiming and direct weapon selection, which VCS has rows for, are left 
 `VehicleRecentre` is a new `lcs.ini` key (the chase camera's `vehicleRecentre`, which was not saved
 before). `LoadSettings` and `SaveSettings` now walk the option table rather than listing keys.
 
+A row on `OptionPage::Developer` is saved and loaded like any other but is on no menu page:
+`DumpTextures` (hd-textures.md) is one, edited in Debug -> LCS.
+
 ## The cheats
 
 A cheat row queues its eight presses on the PSP pad (`LCS::QueuePadTaps`, the queue Debug -> LCS ->

@@ -43,6 +43,8 @@ python Tools/lcshd.py review --tier sure --dump ...   # contact sheets, alpha on
 python Tools/lcshd.py bind   --pack <TEXTURES/ULUS10041> --dump .../new --tier sure
 python Tools/lcshd.py dds    --pack <TEXTURES/ULUS10041>
 python Tools/lcshd.py merge  --pack <TEXTURES/ULUS10041>        # the HD UI/HUD pack, see below
+python Tools/lcstxd.py                            # the texture tool: PC packs + Android, auto-assign
+python Tools/lcstxdweb.py                         # the browser-pane viewer, Android only
 ```
 
 Work files go to `hd/` in the workspace root (the index, `matches.csv`, review sheets). The pack is
@@ -50,9 +52,20 @@ Work files go to `hd/` in the workspace root (the index, `matches.csv`, review s
 `ignoreAddress`, `ignoreMipmap` - so the hashes agree) and `android/`.
 
 **Dumps come first.** PPSSPP names a texture by a hash of its data, and only a texture it has drawn
-gets dumped: set `SaveNewTextures = True`, play, and the dump grows in `new/`. `match` tops up its
-cache as it does. Coverage is the limit: the first dump (the car and park fixtures, two minutes)
-has 867 textures.
+gets dumped, to `new/`. `match` tops up its cache as the dump grows. Coverage is the limit: the
+first dump (the car and park fixtures, two minutes) has 867 textures; one boot into the save's
+area added 146.
+
+**Dumping is on at every boot.** lcs.ini's `DumpTextures` (default on; Debug -> LCS has the
+checkbox, no menu page) makes `LCS::ApplyTextureDump` turn PPSSPP's `SaveNewTextures` on when the
+EBOOT is recognised: after the game's own config has loaded and before the GPU comes up, which is
+when the texture cache reads it. It never turns it off; with the key off, PPSSPP's own checkbox
+decides. It also sets `IgnoreTextureFilenames`, which does nothing but skip a check PPSSPP runs only
+while saving: file names in the ini with capitals get a six-second warning on every load of the
+ini, and the hand-made pack is named that way (`HUD/Health.png`). Checked: with `SaveNewTextures =
+False` in ppsspp.ini, a boot logged `LCS: texture dump on` and saved 146 new textures (867 ->
+1,013). Video frames and PPGe's own textures are never dumped; a texture with a replacement isn't
+either, so a bound one never comes back as new.
 
 ### Matching
 
@@ -112,10 +125,94 @@ Checked in game with both: the HD HUD (fist icon, digits, the help text's button
 HD dirt and grass. The two packs share no hash so far. The pack's ini names `HUD/Chisel.png`, and
 the file is `HUD/weapons/Chisel.png`, so that one icon does not load.
 
+## The texture tool: lcstxd.py, ported from VCS
+
+No published tool reads this OBB end to end: obbdec_lcs unpacks it, the GTAStories Texture Viewer
+reads the PSP and PS2 TXDs, and Magic.TXD the RenderWare mobile TXDs of III, VC and SA. Nothing
+joins the PVRs to PPSSPP's hashes. The VCS fork's TXD browser does that for PC art, so it is ported:
+`Tools/lcsrw.py` (its `txd.py`, the RenderWare/IMG/image reader), `Tools/lcsmatch.py` (its
+`vcs_match.py`) and `Tools/lcstxd.py` (its `txd_browser.py`), from gtavcspc 1193f89. Same window:
+dictionaries, grid and detail panes, search across every source, per-texture "Find LCS matches",
+Auto-assign (each dump beside up to 10 candidates spread across packs, pick one per row, Install),
+Unmatched, Compare packs, resolution families. `python Tools/lcstxd.py` opens it on the defaults.
+
+**Sources** (`DEFAULT_SOURCES`): the VCS fork's `gtavcspc/sources` (gta3upscaled, gta3ps2upscaled,
+gtavcupscaled, gtasaupscaled1/2, vcde, vcde_gta3, vcde_sa, models gta vcs e3: 137,463 textures) and
+the Android OBB, which lcsrw lists as dictionaries `android/<txd>` (a WAD hash stands in for the
+chunk offset; levels decode one at a time) and lcsmatch as the pack `android`. 146,579 indexed.
+
+**Caches**, one per source and keyed on its path, beside it: `.txd_index_<stamp>.npz` (signatures,
+the VCS tool's own file name, so the two share the PC index) and `.txd_scan_<stamp>.npz` (the
+listing; a cold scan of the PC folder took three minutes, the cache 0.8 s, the tool starts in 5 s).
+The VCS index was built when the folder was `Desktop\sources`; `TxdIndex._adopt` took it over with
+its paths moved instead of a rebuild. It lacked `models gta vcs e3` (14,014 textures), which
+`top_up` indexed from the scan in about 40 s: whatever a source's scan lists that its index lacks is
+decoded and added when a review starts. Reindex rescans and tops up; it no longer rebuilds all.
+
+**Scoring** is the VCS signature with the alpha penalty and **no aspect penalty** (see Matching).
+The VCS tool's "match VCS aspect" install option, which stretches a square replacement to the PSP's
+shape, is not ported: its docstring says square art drawn unsqueezed comes out twice as wide, but
+PPSSPP normalises UVs by the original's size (`gstate_c.curTextureWidth`, set from the GE whatever
+the replacement is) and samples the replacement in 0-1, so it covers the same area. With "grow" that
+option only made the file bigger. Dump signatures cache as `new/.lcs_match_index.npz`, families as
+`new/.lcs_families.npz`.
+
+**Pre-picks** (rows under 0.05 start chosen, as in VCS) follow two LCS rules. A dump below
+`MIN_DETAIL` (luminance spread, lcshd's measure) is never pre-picked and says "flat: look": a near
+zero distance means nothing on a flat colour. And of the candidates within 0.01 of the closest (the
+same artwork) the largest is taken, and only if it is bigger than the PSP texture: the closest is
+often a copy at the PSP's own size (SA's 64x64 shad_car beside two 256x256 ones at 0.000; the E3
+build's 32x32 particles), which gains nothing.
+
+**Install** keeps the PSP texture's brightness ("keep PSP brightness", default on;
+`lcshd.colour_matched`, also a toggle in the compare window), converts to DDS (`lcshd.png_to_dds`),
+and writes through `lcshd.set_manual` into the manual block, with a `# <hash> <- <source>` comment
+above each entry. Paths: `pc/<pack>/<hash>.dds`, or for Android art the web viewer's
+`android/<txd>/<texture>~<last 8>.dds`, so both tools read it back. A hand-made hash is refused;
+a file a previous pick wrote is deleted once nothing names it.
+
+Measured on the 1,013-texture dump: 965 rows with a candidate within 0.45; 277 pre-picked
+(gta3ps2upscaled 158, gtasaupscaled1 27, gtasaupscaled2 24, models gta vcs e3 23, vcde 19,
+gta3upscaled 13, android 10, vcde_sa 2, gtavcupscaled 1), installed into a copy of the pack in 27 s,
+all DDS, nothing outside the manual block changed. LCS reuses GTA III's art, so the GTA III PS2
+upscale is the best single source. In game (a copy of that install in the pack, the park fixture):
+the PC art drew at the PSP's brightness with nothing washed out or broken. Not an A/B: Toni ran
+from the fixture in both boots with no input sent, and the two captures ended in different places.
+
+Tested without input: the windows were driven from a script (`Browser`, `auto_assign`,
+`install_checked` with the confirmation answered) and captured with PrintWindow.
+
+### The web viewer: lcstxdweb.py
+
+The first viewer, kept for the browser pane: `python Tools/lcstxdweb.py` serves 127.0.0.1:8642.
+
+- **Android HD**: all 9,178 textures by TXD (named ones first, then the unnamed world folders),
+  searchable by name or OBB hash. One shows its size, format and mips, saves as a full-size PNG,
+  lists the dumps bound to it, and ranks the dumps that look like it (lcshd's `rank` run the other
+  way round). Thumbnails come from the PVR's own 128 px mip level, cached in `hd/thumbs/`.
+- **PSP dumps**: everything in `new/`, filtered by what the ini does with it (not replaced,
+  Android, manual, hand-made, no HD) or by matcher tier. One ranks the Android set against it, or
+  finds HD textures by name, and shows the pick colour-matched beside the dump, squeezed to the
+  dump's shape: that is how it draws (a 64x64 bound to a 32x64 covers the same UVs, so it draws
+  1:2). The file keeps the Android size.
+- **Bind** writes `android/<txd>/<texture>~<last 8 of the hash>.dds` through `lcshd.set_manual`,
+  dropping an Android binding of the same hash. **No HD** writes an empty line, which PPSSPP reads
+  as "no replacement" (and stops dumping it) and `bind` as taken, so a wrong automatic match stays
+  gone. **Clear** takes the line out. A file the tools made is deleted when no line names it.
+  `merge` and `bind` both leave the manual block alone; the hand-made block can't be changed here.
+- PPSSPP rereads the ini on any graphics config change: Texture quality LOW and back to HIGH in the
+  pause menu shows a bind in a running game (for either tool).
+
+The server binds to 127.0.0.1 and refuses a POST without an `X-LCS` header, so another site open
+in the browser can't write to the pack. Checked against a copy of the pack: bind, rebind (the old
+file deleted), no HD on an automatic binding, clear, the hand-made refusal, and `merge` + `bind`
+over the result; the rest of the ini came out byte-identical.
+
 ## Not done
 
-- **Coverage**: everything not yet dumped. Play with `SaveNewTextures` on, then re-run `match`,
-  `bind` and `dds`; `bind` skips hashes the ini already has.
+- **Coverage**: everything not yet dumped. Every session dumps now; re-run `match`, then `bind`
+  and `dds`, or Auto-assign in lcstxd. `bind` skips hashes the ini already has. After the first
+  boot into the save: 1,012 scored, 157 sure (134 bound), 92 likely.
 - **The likely tier**: bind after looking at `review_likely.png`, or adjust tiers per area.
 - **World texture names** from the `.lvz` level files, which would let names join where pictures
   are ambiguous (flat colours, near-identical tiles).
