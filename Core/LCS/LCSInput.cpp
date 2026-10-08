@@ -323,8 +323,10 @@ static float WrapAngle(float a) {
 }
 
 // The mouse turns the on-foot camera (Cams[ActiveCam] in Process_FollowPed). Applied as a change to
-// whatever the camera holds now, so a script turning the camera still turns it.
-static void ApplyMouseLook(InputContext context, float dx, float dy) {
+// whatever the camera holds now, so a script turning the camera still turns it. With the chase
+// camera on foot, the movement goes to it instead, and it writes the angles from inside the frame;
+// the takeover stays, so what it writes holds.
+static void ApplyMouseLook(InputContext context, float dx, float dy, bool chaseCam) {
 	const LCSSettings &settings = Settings();
 	const std::optional<u8> active = ReadU8(kLCSTheCamera + kLCSCamActiveOffset);
 	const u32 cam = kLCSTheCamera + kLCSCamsOffset + active.value_or(0) * kLCSCamStride;
@@ -345,6 +347,11 @@ static void ApplyMouseLook(InputContext context, float dx, float dy) {
 
 	const float sens = settings.mouseSensitivity;
 	const float ySign = settings.invertMouseY ? -1.0f : 1.0f;
+	if (chaseCam) {
+		// The chase camera's convention: yaw counter-clockwise from above, pitch up.
+		ChaseCamAddLook(-dx * sens, -dy * sens * ySign);
+		return;
+	}
 	const std::optional<float> beta = ReadFloat(cam + kLCSCamBetaOffset);
 	const std::optional<float> alpha = ReadFloat(cam + kLCSCamAlphaOffset);
 	if (beta) {
@@ -372,7 +379,7 @@ void InputTick(const LCSState &state) {
 	}
 	g_context.store(context, std::memory_order_relaxed);
 	// In a vehicle only the chase camera can be turned: the game's own swings back (chase-camera.md).
-	const bool mouseCamera = context == kFoot || (context == kCar && ChaseCamInstalled());
+	const bool mouseCamera = context == kFoot || (context == kCar && ChaseCamTakesLook(kCar));
 	g_mouseDriving.store(settings.keyboardMouse && settings.mouseLook && mouseCamera,
 		std::memory_order_relaxed);
 
@@ -410,7 +417,7 @@ void InputFrameBoundary() {
 		g_mouseDY = 0.0f;
 	}
 	const InputContext context = g_context.load(std::memory_order_relaxed);
-	if (context == kCar && ChaseCamInstalled()) {
+	if (context == kCar && ChaseCamTakesLook(kCar)) {
 		// The chase camera's convention: yaw counter-clockwise from above, pitch up. The mouse to
 		// the right turns the view right; away from you looks up.
 		const LCSSettings &settings = Settings();
@@ -418,7 +425,7 @@ void InputFrameBoundary() {
 		ChaseCamAddLook(-dx * settings.mouseSensitivity, -dy * settings.mouseSensitivity * ySign);
 		return;
 	}
-	ApplyMouseLook(context, dx, dy);
+	ApplyMouseLook(context, dx, dy, ChaseCamTakesLook(context));
 }
 
 void ResetInput() {

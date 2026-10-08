@@ -59,6 +59,15 @@ static bool ParseDevKey(const std::string &name, InputKeyCode *code, InputDevice
 	return false;
 }
 
+// To the LCS layer first, as NativeKey would, but without NativeKey's filtering: with an ImGui
+// window focused (a click on Debug -> LCS is enough) NativeKey keeps keyboard keys from the game,
+// and a test then sees nothing happen. Keys the layer doesn't claim go through NativeKey as usual.
+static void SendDevKey(const KeyInput &key) {
+	if (!LCS::HandleHostKey(key)) {
+		NativeKey(key);
+	}
+}
+
 void LCSDevKeyPipeTick() {
 	static const char *path = getenv("LCS_KEY_PIPE");
 	if (!path || !*path) {
@@ -128,11 +137,11 @@ void LCSDevKeyPipeTick() {
 			continue;
 		}
 		if (verb == "press") {
-			NativeKey(KeyInput(device, code, KeyInputFlags::DOWN));
+			SendDevKey(KeyInput(device, code, KeyInputFlags::DOWN));
 			queue.push_front("up " + arg);
 			wait = 2;
 			return;
 		}
-		NativeKey(KeyInput(device, code, verb == "up" ? KeyInputFlags::UP : KeyInputFlags::DOWN));
+		SendDevKey(KeyInput(device, code, verb == "up" ? KeyInputFlags::UP : KeyInputFlags::DOWN));
 	}
 }

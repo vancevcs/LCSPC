@@ -240,6 +240,20 @@ bool g_hooked = false;
 u32 g_finishAddr = 0;
 const char *g_status = "not installed";
 
+enum class CamKind {
+	None,
+	OnFoot,
+	Vehicle,
+};
+
+const char *KindName(CamKind kind) {
+	switch (kind) {
+	case CamKind::OnFoot: return "on foot";
+	case CamKind::Vehicle: return "vehicle";
+	default: return "-";
+	}
+}
+
 // --- The view the player asked for ---
 float g_yaw = 0.0f;      // the direction the camera looks: atan2(Front.y, Front.x)
 float g_pitch = 0.0f;    // up is positive: asin(Front.z)
@@ -247,12 +261,14 @@ float g_sinceLook = 1e3f;
 
 // --- One frame, carried from the prepare hook to the finish hook ---
 bool g_prepared = false;
+CamKind g_kind = CamKind::None;
 int g_mode = -1;
 float g_dt = 0.0f;
 CamVec g_pivot;
 CamVec g_front;
 CamVec g_up;
-// From the camera to the pivot: the view direction, except where the orbit is capped (orbitUp).
+// From the camera to the pivot: the view direction, except where a vehicle's orbit is capped
+// (vehicleOrbitUp).
 CamVec g_orbit;
 float g_clearance = 0.0f;
 float g_near = 0.0f;
@@ -264,6 +280,9 @@ int g_rayCount = 0;
 
 // --- Kept between frames ---
 bool g_owned = false;
+CamKind g_lastKind = CamKind::None;
+CamVec g_lastPivot;
+CamVec g_pivotOffset;
 float g_gameDistance = 0.0f;
 float g_distance = 0.0f;
 float g_allowed = 0.0f;
@@ -303,9 +322,29 @@ void ReadEnvironment() {
 	}
 }
 
-bool Wanted() {
+bool WantedFor(CamKind kind) {
 	const LCSSettings &s = Settings();
-	return s.vehicleChaseCamera && s.keyboardMouse && s.mouseLook;
+	if (!s.keyboardMouse || !s.mouseLook) {
+		return false;
+	}
+	switch (kind) {
+	case CamKind::OnFoot: return s.footChaseCamera;
+	case CamKind::Vehicle: return s.vehicleChaseCamera;
+	default: return false;
+	}
+}
+
+bool Wanted() {
+	return WantedFor(CamKind::OnFoot) || WantedFor(CamKind::Vehicle);
+}
+
+void PitchLimits(CamKind kind, float *lo, float *hi) {
+	const LCSChaseCamTuning &t = ChaseCamTuning();
+	const float up = kind == CamKind::Vehicle ? t.vehicleLookUp : t.footLookUp;
+	const float down = kind == CamKind::Vehicle ? t.vehicleLookDown : t.footLookDown;
+	// Never quite vertical: Up is built from the pitch and degenerates at +/-90 degrees.
+	*lo = -Clamp(down, 0.0f, 1.5f);
+	*hi = Clamp(up, 0.0f, 1.5f);
 }
 
 // Seconds of game time in the frame being processed. TimeStep is in 50 fps units (1.67 at 30 fps)
@@ -362,47 +401,86 @@ std::optional<VehicleBox> ReadVehicleBox(u32 vehicle) {
 	return VehicleBox{*lo, *hi, hi->z, length, true};
 }
 
-// The vehicle this frame, which the camera must stay out of. Set by the prepare hook, read by the
-// finish hook.
+// What the camera must stay out of this frame: the player, or the player's vehicle. Set by the
+// prepare hook, read by the finish hook.
 CamVec g_subjectPos;
 CamVec g_vehRight{1.0f, 0.0f, 0.0f};
 CamVec g_vehForward{0.0f, 1.0f, 0.0f};
 CamVec g_vehUp{0.0f, 0.0f, 1.0f};
 VehicleBox g_box;
 
+// The player's own vehicle while the player is inside its box, getting in or out: the rays start
+// at the player, so on foot every one of them hit it and the camera snapped in to its minimum. Its
+// hits are skipped while this is set; a car the player stands next to still counts.
+u32 g_ignoreEntity = 0;
+
+bool InsideEntityBox(u32 entity, CamVec p, float margin) {
+	const std::optional<CamVec> pos = ReadVec(entity + kLCSEntityPositionOffset);
+	const std::optional<CamVec> right = ReadVec(entity + kLCSEntityRightOffset);
+	const std::optional<CamVec> forward = ReadVec(entity + kLCSEntityForwardOffset);
+	const std::optional<CamVec> up = ReadVec(entity + kLCSEntityUpOffset);
+	const std::optional<VehicleBox> box = ReadVehicleBox(entity);
+	if (!pos || !right || !forward || !up || !box) {
+		return false;
+	}
+	const CamVec d = Sub(p, *pos);
+	const CamVec local{Dot(d, *right), Dot(d, *forward), Dot(d, *up)};
+	return local.x > box->min.x - margin && local.x < box->max.x + margin &&
+		local.y > box->min.y - margin && local.y < box->max.y + margin &&
+		local.z > box->min.z - margin && local.z < box->max.z + margin;
+}
+
 CamVec VehicleLocal(CamVec p) {
 	const CamVec d = Sub(p, g_subjectPos);
 	return CamVec{Dot(d, g_vehRight), Dot(d, g_vehForward), Dot(d, g_vehUp)};
 }
 
-// How far `p` is from the surface of the vehicle's box: negative inside.
-float SubjectClearance(CamVec p) {
-	const CamVec local = VehicleLocal(p);
-	const CamVec out{
-		std::max({g_box.min.x - local.x, 0.0f, local.x - g_box.max.x}),
-		std::max({g_box.min.y - local.y, 0.0f, local.y - g_box.max.y}),
-		std::max({g_box.min.z - local.z, 0.0f, local.z - g_box.max.z}),
-	};
-	const float outside = Length(out);
-	if (outside > 0.0f) {
-		return outside;
+// How far `p` is from the surface of the player's capsule or the vehicle's box: negative inside.
+float SubjectClearance(CamKind kind, CamVec p) {
+	const LCSChaseCamTuning &t = ChaseCamTuning();
+	if (kind == CamKind::Vehicle) {
+		const CamVec local = VehicleLocal(p);
+		const CamVec out{
+			std::max({g_box.min.x - local.x, 0.0f, local.x - g_box.max.x}),
+			std::max({g_box.min.y - local.y, 0.0f, local.y - g_box.max.y}),
+			std::max({g_box.min.z - local.z, 0.0f, local.z - g_box.max.z}),
+		};
+		const float outside = Length(out);
+		if (outside > 0.0f) {
+			return outside;
+		}
+		// Inside: the distance to the nearest face, as a negative number.
+		return -std::min({local.x - g_box.min.x, g_box.max.x - local.x, local.y - g_box.min.y,
+			g_box.max.y - local.y, local.z - g_box.min.z, g_box.max.z - local.z});
 	}
-	// Inside: the distance to the nearest face, as a negative number.
-	return -std::min({local.x - g_box.min.x, g_box.max.x - local.x, local.y - g_box.min.y,
-		g_box.max.y - local.y, local.z - g_box.min.z, g_box.max.z - local.z});
+	const float z = Clamp(p.z, g_subjectPos.z - t.footBodyBelow, g_subjectPos.z + t.footBodyAbove);
+	const CamVec axis{g_subjectPos.x, g_subjectPos.y, z};
+	return Length(Sub(p, axis)) - t.footBodyRadius;
 }
 
-// Lift the camera up and out over the top of the vehicle if it has ended up inside the box (backed
-// into a corner). The view keeps looking where the player asked; only the position moves.
-CamVec KeepOutOfSubject(CamVec p) {
-	const float margin = ChaseCamTuning().subjectMargin;
-	const CamVec local = VehicleLocal(p);
-	const bool inside = local.x > g_box.min.x - margin && local.x < g_box.max.x + margin &&
-		local.y > g_box.min.y - margin && local.y < g_box.max.y + margin &&
-		local.z > g_box.min.z - margin && local.z < g_box.max.z + margin;
-	if (inside) {
-		// Along world up, scaled by how upright the vehicle is so a tilted one still gets cleared.
-		p.z += (g_box.max.z + margin - local.z) / std::max(g_vehUp.z, 0.3f);
+// Lift the camera up and out over the top of the player or the vehicle if it has ended up inside
+// (backed into a corner, or pulled in under a low ceiling). The view keeps looking where the
+// player asked; only the position moves.
+CamVec KeepOutOfSubject(CamKind kind, CamVec p) {
+	const LCSChaseCamTuning &t = ChaseCamTuning();
+	const float margin = t.subjectMargin;
+	if (kind == CamKind::Vehicle) {
+		const CamVec local = VehicleLocal(p);
+		const bool inside = local.x > g_box.min.x - margin && local.x < g_box.max.x + margin &&
+			local.y > g_box.min.y - margin && local.y < g_box.max.y + margin &&
+			local.z > g_box.min.z - margin && local.z < g_box.max.z + margin;
+		if (inside) {
+			// Along world up, scaled by how upright the vehicle is so a tilted one still gets cleared.
+			p.z += (g_box.max.z + margin - local.z) / std::max(g_vehUp.z, 0.3f);
+		}
+		return p;
+	}
+	const float dx = p.x - g_subjectPos.x;
+	const float dy = p.y - g_subjectPos.y;
+	const float r = t.footBodyRadius + margin;
+	const float top = g_subjectPos.z + t.footBodyAbove + margin;
+	if (dx * dx + dy * dy < r * r && p.z > g_subjectPos.z - t.footBodyBelow && p.z < top) {
+		p.z = top;
 	}
 	return p;
 }
@@ -482,6 +560,9 @@ void Unhook() {
 void ChaseCamReset() {
 	g_prepared = false;
 	g_owned = false;
+	g_kind = CamKind::None;
+	g_lastKind = CamKind::None;
+	g_pivotOffset = CamVec{};
 	g_blendingOut = false;
 	g_blend = 1.0f;
 	g_sinceLook = 1e3f;
@@ -652,17 +733,25 @@ void RemoveChaseCam() {
 	ChaseCamReset();
 }
 
-bool ChaseCamInstalled() {
-	return g_hooked && Wanted();
+bool ChaseCamTakesLook(InputContext context) {
+	if (!g_hooked) {
+		return false;
+	}
+	switch (context) {
+	case InputContext::OnFoot: return WantedFor(CamKind::OnFoot);
+	case InputContext::InVehicle: return WantedFor(CamKind::Vehicle);
+	default: return false;
+	}
 }
 
 void ChaseCamAddLook(float yawRadians, float pitchRadians) {
 	if (yawRadians == 0.0f && pitchRadians == 0.0f) {
 		return;
 	}
-	const LCSChaseCamTuning &t = ChaseCamTuning();
 	g_yaw = WrapPi(g_yaw + yawRadians);
-	g_pitch = Clamp(g_pitch + pitchRadians, -Clamp(t.lookDown, 0.0f, 1.5f), Clamp(t.lookUp, 0.0f, 1.5f));
+	float lo, hi;
+	PitchLimits(g_lastKind, &lo, &hi);
+	g_pitch = Clamp(g_pitch + pitchRadians, lo, hi);
 	g_sinceLook = 0.0f;
 }
 
@@ -696,18 +785,43 @@ int Hook_lcs_camera_prepare() {
 	g_preUp = *preUp;
 
 	g_mode = (int)ReadU16(ActiveCam() + kLCSCamModeOffset).value_or(0xffff);
-	const bool vehicleView = Wanted() && CurrentInputContext() == InputContext::InVehicle &&
-		(g_mode == kLCSCamModeCamOnAString || g_mode == kLCSCamModeBehindBoat);
+	const InputContext context = CurrentInputContext();
+	// By the game's camera mode and the player's state as the game has it this frame, not the input
+	// context, which is decoded at the vblank and lags the camera by up to a frame. Each lag was a
+	// cut: getting in, the game switches to mode 18 a frame before the in-vehicle flag reaches the
+	// context; getting out, it is in mode 4 about three seconds before it clears the flag. So mode 4
+	// is on foot whatever the flag says, and mode 18 / 22 is the vehicle whenever the player has one
+	// (m_pMyVehicle is set from the moment the player starts getting in).
+	CamKind kind = CamKind::None;
+	const bool playing = context == InputContext::OnFoot || context == InputContext::InVehicle;
+	const u32 vehicle = ReadAddrU32(LCSAddr::PlayerVehicle).value_or(0);
+	if (playing && g_mode == kLCSCamModeFollowPed && WantedFor(CamKind::OnFoot)) {
+		kind = CamKind::OnFoot;
+	} else if (playing && vehicle != 0 && WantedFor(CamKind::Vehicle) &&
+	           (g_mode == kLCSCamModeCamOnAString || g_mode == kLCSCamModeBehindBoat)) {
+		kind = CamKind::Vehicle;
+	}
 
-	const u32 vehicle = vehicleView ? ReadAddrU32(LCSAddr::PlayerVehicle).value_or(0) : 0;
-	const std::optional<CamVec> pos = vehicle ? ReadVec(vehicle + kLCSEntityPositionOffset) : std::nullopt;
-	const std::optional<CamVec> forward = vehicle ? ReadVec(vehicle + kLCSEntityForwardOffset) : std::nullopt;
-	const std::optional<CamVec> rightRow = vehicle ? ReadVec(vehicle + kLCSEntityRightOffset) : std::nullopt;
-	const std::optional<CamVec> upRow = vehicle ? ReadVec(vehicle + kLCSEntityUpOffset) : std::nullopt;
-
+	// The subject: the player, or the vehicle. Its matrix rows: right, forward, up, position.
+	const u32 subject = kind == CamKind::OnFoot ? ReadAddrU32(LCSAddr::PlayerBase).value_or(0)
+		: kind == CamKind::Vehicle ? vehicle : 0;
+	const std::optional<CamVec> pos = subject ? ReadVec(subject + kLCSEntityPositionOffset) : std::nullopt;
+	const std::optional<CamVec> forward = subject ? ReadVec(subject + kLCSEntityForwardOffset) : std::nullopt;
+	const std::optional<CamVec> rightRow = subject ? ReadVec(subject + kLCSEntityRightOffset) : std::nullopt;
+	const std::optional<CamVec> upRow = subject ? ReadVec(subject + kLCSEntityUpOffset) : std::nullopt;
 	if (!pos || !forward || !rightRow || !upRow) {
+		kind = CamKind::None;
+	}
+	if (g_trace && kind != g_kind) {
+		NOTICE_LOG(Log::HLE, "LCS cam: %s -> %s (mode %d, %s, frame %llu)", KindName(g_kind), KindName(kind), g_mode,
+			InputContextName(context), (unsigned long long)g_frames);
+	}
+	g_kind = kind;
+
+	if (kind == CamKind::None) {
 		if (g_owned) {
 			g_owned = false;
+			g_lastKind = CamKind::None;
 			// Ease into whatever the game switched to, unless it cut somewhere else entirely,
 			// which is a cut the game meant.
 			g_blendingOut = t.blendOut > 0.0f && Length(Sub(g_outSource, g_preSource)) < 15.0f;
@@ -719,28 +833,42 @@ int Hook_lcs_camera_prepare() {
 	g_blendingOut = false;
 
 	// --- The pivot ---
-	g_box = ReadVehicleBox(vehicle).value_or(VehicleBox{});
+	CamVec pivot;
 	g_subjectPos = *pos;
-	g_vehRight = *rightRow;
-	g_vehForward = *forward;
-	g_vehUp = *upRow;
-	// World up, never the vehicle's: a car on its side must not tip the pivot with it.
-	const CamVec pivot{pos->x, pos->y, pos->z + g_box.top * t.pivotScale};
-	const float vehicleHeading = std::atan2(forward->y, forward->x);
-	if (vehicle == g_vehicle && g_haveVehiclePos && g_dt > 0.0f) {
-		g_speed = Length(Sub(*pos, g_vehiclePos)) / g_dt;
-	} else {
+	const float heading = std::atan2(forward->y, forward->x);
+	g_ignoreEntity = 0;
+	if (kind == CamKind::OnFoot) {
+		pivot = CamVec{pos->x, pos->y, pos->z + t.footPivotHeight};
+		g_haveVehiclePos = false;
 		g_speed = 0.0f;
+		// The box itself, no margin: standing at the door after getting out is already outside
+		// it (with 0.3 the car stopped blocking the camera there), and the door is the last place
+		// the player is inside it.
+		if (vehicle != 0 && InsideEntityBox(vehicle, *pos, 0.0f)) {
+			g_ignoreEntity = vehicle;
+		}
+	} else {
+		g_box = ReadVehicleBox(subject).value_or(VehicleBox{});
+		g_vehRight = *rightRow;
+		g_vehForward = *forward;
+		g_vehUp = *upRow;
+		// World up, never the vehicle's: a car on its side must not tip the pivot with it.
+		pivot = CamVec{pos->x, pos->y, pos->z + g_box.top * t.vehiclePivotScale};
+		if (subject == g_vehicle && g_haveVehiclePos && g_dt > 0.0f) {
+			g_speed = Length(Sub(*pos, g_vehiclePos)) / g_dt;
+		} else {
+			g_speed = 0.0f;
+		}
+		g_vehicle = subject;
+		g_vehiclePos = *pos;
+		g_haveVehiclePos = true;
 	}
-	g_vehicle = vehicle;
-	g_vehiclePos = *pos;
-	g_haveVehiclePos = true;
 
 	g_gameDistance = Length(Sub(g_preSource, pivot));
 
 	if (!g_owned) {
-		// Take the view from wherever the game has the camera this frame: after a cutscene, a
-		// load or getting in, that is what the player was just looking at.
+		// Take the view from wherever the game has the camera this frame: after aiming, a
+		// cutscene, a load or getting in, that is what the player was just looking at.
 		const CamVec front = Normalize(g_preFront, CamVec{1.0f, 0.0f, 0.0f});
 		g_yaw = std::atan2(front.y, front.x);
 		g_pitch = std::asin(Clamp(front.z, -1.0f, 1.0f));
@@ -748,13 +876,24 @@ int Hook_lcs_camera_prepare() {
 		// distance eases out to ours rather than jumping there.
 		g_distance = g_gameDistance;
 		g_blend = t.blendIn > 0.0f ? 0.0f : 1.0f;
+		g_pivotOffset = CamVec{};
 		g_wasGlancing = false;
-		static bool announced = false;
+		static bool announcedFoot = false, announcedVehicle = false;
+		bool &announced = kind == CamKind::OnFoot ? announcedFoot : announcedVehicle;
 		if (!announced) {
 			announced = true;
-			NOTICE_LOG(Log::HLE, "LCS: chase camera took the vehicle view (mode %d, box %.2f long%s)",
-				g_mode, g_box.length, g_box.fromGame ? "" : ", default box");
+			if (kind == CamKind::OnFoot) {
+				NOTICE_LOG(Log::HLE, "LCS: chase camera took the on-foot view (mode %d)", g_mode);
+			} else {
+				NOTICE_LOG(Log::HLE, "LCS: chase camera took the vehicle view (mode %d, box %.2f long%s)",
+					g_mode, g_box.length, g_box.fromGame ? "" : ", default box");
+			}
 		}
+	} else if (kind != g_lastKind) {
+		// Straight from the player to a car or back, with no frame in between: keep the view, and
+		// let the pivot slide across rather than jump.
+		g_pivotOffset = Add(g_pivotOffset, Sub(g_lastPivot, pivot));
+		g_wasGlancing = false;
 	}
 	g_owned = true;
 	g_ownedFrames++;
@@ -772,45 +911,56 @@ int Hook_lcs_camera_prepare() {
 		g_sinceLook = 0.0f;
 		NOTICE_LOG(Log::HLE, "LCS: chase camera look command - yaw %.3f pitch %.3f", g_yaw, g_pitch);
 	}
-	g_pivot = pivot;
+
+	g_lastPivot = pivot;
+	g_pivotOffset = Mul(g_pivotOffset, 1.0f - EaseFactor(t.pivotSettleRate, g_dt));
+	g_pivot = Add(pivot, g_pivotOffset);
 
 	// --- How far back ---
-	// From the box, not the game's camera: a bus is still framed like a bus, and Select's zoom
-	// level still scales it.
-	const float zoom = ReadFloat(kLCSTheCamera + kLCSCamCarZoomOffset).value_or(2.0f);
-	const float zoomScale = zoom < 1.5f ? t.zoomNear : (zoom > 2.5f ? t.zoomFar : 1.0f);
-	g_wantDistance = (t.distanceBase + t.distancePerLength * g_box.length) * zoomScale * t.distanceScale;
+	// Not from the game's camera. A vehicle is framed from its box, so a bus is still framed like
+	// a bus and Select's zoom level still scales it.
+	if (kind == CamKind::Vehicle) {
+		const float zoom = ReadFloat(kLCSTheCamera + kLCSCamCarZoomOffset).value_or(2.0f);
+		const float zoomScale = zoom < 1.5f ? t.vehicleZoomNear : (zoom > 2.5f ? t.vehicleZoomFar : 1.0f);
+		g_wantDistance = (t.vehicleDistanceBase + t.vehicleDistancePerLength * g_box.length) * zoomScale *
+			t.vehicleDistanceScale;
+	} else {
+		g_wantDistance = t.footDistance;
+	}
 	g_wantDistance = Clamp(g_wantDistance, std::max(t.minDistance, 0.1f), 60.0f);
 
 	// --- Where to look ---
 	g_sinceLook += g_dt;
-	const float lo = -Clamp(t.lookDown, 0.0f, 1.5f);
-	const float hi = Clamp(t.lookUp, 0.0f, 1.5f);
+	float lo, hi;
+	PitchLimits(kind, &lo, &hi);
 	float yaw = g_yaw;
 	float pitch = g_pitch;
+	// On foot only look behind (L + R): L alone is the game's look-around, R alone its lock-on.
 	const bool left = t.glances && GlanceHeld(true);
 	const bool right = t.glances && GlanceHeld(false);
-	g_glancing = left || right;
+	g_glancing = kind == CamKind::Vehicle ? (left || right) : (left && right);
 	if (g_glancing) {
-		yaw = vehicleHeading + (left && right ? kPi : (left ? kPi * 0.5f : -kPi * 0.5f));
-		pitch = t.restPitch;
-	} else {
+		yaw = heading + (left && right ? kPi : (left ? kPi * 0.5f : -kPi * 0.5f));
+		pitch = kind == CamKind::Vehicle ? t.vehicleRestPitch : 0.0f;
+	} else if (kind == CamKind::Vehicle) {
 		if (g_wasGlancing) {
 			// Letting go of a glance is asking for the default view back.
-			g_yaw = vehicleHeading;
-			g_pitch = t.restPitch;
-		} else if (t.recentre && g_sinceLook > t.recentreDelay && g_speed > t.recentreMinSpeed) {
+			g_yaw = heading;
+			g_pitch = t.vehicleRestPitch;
+		} else if (t.vehicleRecentre && g_sinceLook > t.recentreDelay && g_speed > t.recentreMinSpeed) {
 			const float urgency = Clamp(g_speed / (t.recentreMinSpeed * 4.0f), 0.25f, 1.0f);
 			const float k = EaseFactor(t.recentreRate * urgency, g_dt);
-			g_yaw = WrapPi(g_yaw + WrapPi(vehicleHeading - g_yaw) * k);
-			g_pitch += (t.restPitch - g_pitch) * k;
+			g_yaw = WrapPi(g_yaw + WrapPi(heading - g_yaw) * k);
+			g_pitch += (t.vehicleRestPitch - g_pitch) * k;
 		}
 		yaw = g_yaw;
 		pitch = g_pitch;
 	}
+	// On foot, letting go of look-behind returns to the view the player had: g_yaw never moved.
 	g_wasGlancing = g_glancing;
 	g_pitch = Clamp(g_pitch, lo, hi);
 	pitch = Clamp(pitch, lo, hi);
+	g_lastKind = kind;
 
 	const float cy = std::cos(yaw), sy = std::sin(yaw);
 	const float cp = std::cos(pitch), sp = std::sin(pitch);
@@ -818,15 +968,17 @@ int Hook_lcs_camera_prepare() {
 	g_up = CamVec{-cy * sp, -sy * sp, cp};
 	const CamVec right3 = CamVec{sy, -cy, 0.0f};
 
-	// Where the camera sits is the orbit, which stops just below the pivot: looking further up
-	// tilts the view rather than swinging the camera down through the car.
-	const float orbitPitch = std::min(pitch, t.orbitUp);
+	// Where the camera sits is the orbit. In a vehicle it stops just below the pivot: looking further
+	// up tilts the view rather than swinging the camera down through the car. On foot the two are
+	// one, so looking up brings the camera down behind the player's legs.
+	const float orbitPitch = kind == CamKind::Vehicle ? std::min(pitch, t.vehicleOrbitUp) : pitch;
 	const float co = std::cos(orbitPitch), so = std::sin(orbitPitch);
 	g_orbit = CamVec{cy * co, sy * co, so};
 	const CamVec orbitUp = CamVec{-cy * so, -sy * so, co};
 
 	// --- The rays ---
-	// All from the pivot, fanning out to coneRadius at the far end.
+	// All from the pivot, fanning out to coneRadius at the far end. Starting them at the pivot
+	// keeps every start on the player's side of a wall the player is standing against.
 	const float reach = g_wantDistance + t.collisionMargin;
 	const CamVec end = Sub(g_pivot, Mul(g_orbit, reach));
 	static const float kFan[kMaxRays][2] = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
@@ -840,11 +992,11 @@ int Hook_lcs_camera_prepare() {
 		WriteU32(ray + kRayHit, 0);
 	}
 	const u32 flags[9] = {
-		1,                              // buildings
-		0,                              // vehicles: never our own
-		0,                              // peds
-		t.collideObjects ? 1u : 0u,     // objects
-		0, 1, 1, 0, 0,                  // as the game's own camera clip
+		1,                                                              // buildings
+		(kind == CamKind::OnFoot && t.footCollideVehicles) ? 1u : 0u,   // vehicles: never our own
+		0,                                                              // peds
+		t.collideObjects ? 1u : 0u,                                     // objects
+		0, 1, 1, 0, 0,                                                  // as the game's own camera clip
 	};
 	for (int i = 0; i < 9; i++) {
 		WriteU32(g_block + kOffFlags + (u32)i * 4, flags[i]);
@@ -896,6 +1048,9 @@ int Hook_lcs_camera_finish() {
 		if (ReadU32(ray + kRayHit).value_or(0) == 0) {
 			continue;
 		}
+		if (g_ignoreEntity != 0 && ReadU32(ray + kRayEntity).value_or(0) == g_ignoreEntity) {
+			continue;
+		}
 		const std::optional<CamVec> point = ReadVec(ray + kRayCol);
 		if (!point) {
 			continue;
@@ -908,14 +1063,15 @@ int Hook_lcs_camera_finish() {
 	g_allowed = allowed;
 
 	// A hit pulls in at once, or the near plane goes through the wall for however long an ease
-	// takes. Anything else eases, in either direction.
+	// takes. Anything else eases, in either direction: out past an obstruction that has cleared,
+	// and in when the wanted distance itself shrinks (getting out of a car is not a collision).
 	if (hits > 0 && allowed < g_distance) {
 		g_distance = allowed;
 	} else {
 		g_distance += (allowed - g_distance) * EaseFactor(t.easeOutRate, g_dt);
 	}
 
-	CamVec source = KeepOutOfSubject(Sub(g_pivot, Mul(g_orbit, g_distance)));
+	CamVec source = KeepOutOfSubject(g_kind, Sub(g_pivot, Mul(g_orbit, g_distance)));
 	CamVec front = g_front;
 	CamVec up = g_up;
 
@@ -932,9 +1088,10 @@ int Hook_lcs_camera_finish() {
 		up = Orthonormal(Lerp(*postUp, up, b), front, up);
 	}
 
-	// The near clip plane: a fraction of the camera's clearance from the vehicle, never more than
-	// the game already chose this frame. The program calls the setter once this hook returns.
-	g_clearance = SubjectClearance(source);
+	// The near clip plane: a fraction of the camera's clearance from the player or the vehicle,
+	// never more than the game already chose this frame. The program calls the setter once this
+	// hook returns.
+	g_clearance = SubjectClearance(g_kind, source);
 	g_near = 0.0f;
 	if (t.nearClip) {
 		const u32 rwCamera = ReadU32(kLCSSceneCameraPtr).value_or(0);
@@ -956,16 +1113,31 @@ int Hook_lcs_camera_finish() {
 	g_outFront = front;
 	g_outUp = up;
 
+	// On foot the game's own angles follow the view: the player walks relative to them, and the
+	// aim camera starts from them. Process_FollowPed builds Front as (-cos Beta cos Alpha,
+	// -sin Beta cos Alpha, sin Alpha), so Beta is the view's yaw plus pi. They hold because
+	// LCSInput has the spring, the yaw correction and the nudge out while the mouse has mode 4.
+	// Never in a vehicle: mode 18 swings them back, and that is what this camera stays away from.
+	if (g_kind == CamKind::OnFoot) {
+		const u32 cam = ActiveCam();
+		float beta = std::fmod(g_yaw + kPi, kTwoPi);
+		if (beta < 0.0f) {
+			beta += kTwoPi;
+		}
+		WriteFloat(cam + kLCSCamBetaOffset, beta);
+		WriteFloat(cam + kLCSCamAlphaOffset, Clamp(g_pitch, kLCSFollowPedPitchMin, kLCSFollowPedPitchMax));
+	}
+
 	if (g_trace) {
 		g_traceTimer += g_dt;
 		if (g_traceTimer >= 1.0f) {
 			g_traceTimer = 0.0f;
 			NOTICE_LOG(Log::HLE,
-				"LCS cam: mode %d yaw %.3f pitch %.3f game %.2f want %.2f allowed %.2f now %.2f hits %d/%d "
+				"LCS cam: %s mode %d yaw %.3f pitch %.3f game %.2f want %.2f allowed %.2f now %.2f hits %d/%d "
 				"pivot %.2f %.2f %.2f source %.2f %.2f %.2f speed %.1f clear %.2f near %.2f%s",
-				g_mode, g_yaw, g_pitch, g_gameDistance, g_wantDistance, g_allowed, g_distance,
+				KindName(g_kind), g_mode, g_yaw, g_pitch, g_gameDistance, g_wantDistance, g_allowed, g_distance,
 				g_hits, g_rayCount, g_pivot.x, g_pivot.y, g_pivot.z, source.x, source.y, source.z, g_speed,
-				g_clearance, g_near, g_glancing ? " glancing" : "");
+				g_clearance, g_near, g_glancing ? " glancing" : g_ignoreEntity ? " ignoring own vehicle" : "");
 		}
 	}
 	return 0;
@@ -975,6 +1147,7 @@ void ChaseCamGetStats(LCSChaseCamStats *out) {
 	out->status = g_status;
 	out->installed = g_hooked;
 	out->owning = g_owned;
+	out->kind = KindName(g_owned ? g_lastKind : CamKind::None);
 	out->mode = g_mode;
 	out->frames = g_frames;
 	out->ownedFrames = g_ownedFrames;

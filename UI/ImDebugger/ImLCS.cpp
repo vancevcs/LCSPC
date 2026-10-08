@@ -414,7 +414,10 @@ void ImLCSWindow::DrawInput() {
 
 void ImLCSWindow::DrawCamera() {
 	LCS::LCSSettings &settings = LCS::Settings();
-	if (ImGui::Checkbox("Vehicle chase camera", &settings.vehicleChaseCamera)) {
+	bool changed = ImGui::Checkbox("On-foot chase camera", &settings.footChaseCamera);
+	ImGui::SameLine();
+	changed |= ImGui::Checkbox("Vehicle chase camera", &settings.vehicleChaseCamera);
+	if (changed) {
 		LCS::SaveSettings();
 	}
 	if (!settings.keyboardMouse || !settings.mouseLook) {
@@ -429,7 +432,7 @@ void ImLCSWindow::DrawCamera() {
 		ImGui::SameLine();
 		ImGui::Text("(block %08x)", s.block);
 	}
-	ImGui::Text("Owning: %s   mode %d   frames %llu / %llu owned", s.owning ? "yes" : "no", s.mode,
+	ImGui::Text("Owning: %s   mode %d   frames %llu / %llu owned", s.owning ? s.kind : "no", s.mode,
 		(unsigned long long)s.frames, (unsigned long long)s.ownedFrames);
 	ImGui::Text("Yaw %.3f   pitch %.3f   since look %.1f s%s", s.yaw, s.pitch, s.sinceLook,
 		s.glancing ? "   glancing" : "");
@@ -443,11 +446,13 @@ void ImLCSWindow::DrawCamera() {
 	ImGui::Separator();
 	LCS::LCSChaseCamTuning &t = LCS::ChaseCamTuning();
 	ImGui::PushItemWidth(200.0f);
-	ImGui::SliderFloat("Distance scale", &t.distanceScale, 0.5f, 2.0f);
-	ImGui::SliderFloat("Pivot (of box top)", &t.pivotScale, 0.5f, 2.0f);
-	ImGui::SliderFloat("Rest pitch", &t.restPitch, -0.6f, 0.3f);
-	ImGui::SliderFloat("Orbit up limit", &t.orbitUp, 0.0f, 1.2f);
-	ImGui::Checkbox("Recentre", &t.recentre);
+	ImGui::SliderFloat("On foot: distance", &t.footDistance, 1.5f, 8.0f);
+	ImGui::SliderFloat("On foot: pivot height", &t.footPivotHeight, 0.0f, 1.5f);
+	ImGui::SliderFloat("Vehicle: distance scale", &t.vehicleDistanceScale, 0.5f, 2.0f);
+	ImGui::SliderFloat("Vehicle: pivot (of box top)", &t.vehiclePivotScale, 0.5f, 2.0f);
+	ImGui::SliderFloat("Vehicle: rest pitch", &t.vehicleRestPitch, -0.6f, 0.3f);
+	ImGui::SliderFloat("Vehicle: orbit up limit", &t.vehicleOrbitUp, 0.0f, 1.2f);
+	ImGui::Checkbox("Recentre", &t.vehicleRecentre);
 	ImGui::SameLine();
 	ImGui::Checkbox("Glances", &t.glances);
 	ImGui::SameLine();

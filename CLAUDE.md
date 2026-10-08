@@ -48,7 +48,7 @@ Core/LCS/ (no ImGui, UI, or renderer dependencies)
   LCSSettings     PSP/SYSTEM/lcs.ini
   LCSFrameRate    60 fps (cap + millisecond carry)
   LCSInput        keyboard and mouse by context; mouse look on foot
-  LCSChaseCam     the vehicle camera, replaced inside CCamera::Process (two hooks + a program)
+  LCSChaseCam     the camera on foot and in vehicles, replaced inside CCamera::Process
   LCSMips.h       encoders for programs written into PSP memory
 UI/ImDebugger/ImLCS   the "LCS" debugger window (Debug -> LCS)
 UI/LCSDevInput        dev only: LCS_KEY_PIPE scripted keys and mouse (docs/lcs/input.md "Testing")
@@ -86,4 +86,4 @@ docs/lcs/architecture.md.
 | docs/lcs/architecture.md | the gate, seams, files, build lists, how to patch code | adding a hook into PPSSPP |
 | docs/lcs/frame-rate.md | 60 fps: what it patches, measurements, what's unchecked | touching CTimer or the frame wait |
 | docs/lcs/input.md | the game's layout, the bindings, key ownership, the on-foot camera takeover, testing | touching input or the camera |
-| docs/lcs/chase-camera.md | the vehicle camera: hook sites, the program, framing, savestates, the car fixture | touching the vehicle camera or adding a hook |
+| docs/lcs/chase-camera.md | the chase camera: hook sites, the program, on foot / vehicle framing, savestates, the fixtures | touching the camera or adding a hook |

@@ -38,6 +38,9 @@ struct LCSSettings {
 	// In a vehicle the mouse orbits a chase camera of the fork's own (LCSChaseCam). Off leaves the
 	// game's vehicle camera, which the mouse can't turn. Needs keyboardMouse and mouseLook.
 	bool vehicleChaseCamera = true;
+	// The same on foot: the mouse orbits a camera that comes in along its line when something is
+	// in the way. Off goes back to writing the game's own angles. Needs keyboardMouse and mouseLook.
+	bool footChaseCamera = true;
 };
 
 LCSSettings &Settings();

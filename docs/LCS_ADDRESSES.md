@@ -228,6 +228,7 @@ function then enqueues the frame's display list (`sceGeListEnQueue` at `0x08ab34
 | `Front` | `CCam+0x1a0` | | written from Alpha/Beta at the end of `Process_FollowPed`; `CCamera::Process` loads it into `sp+0x80` (`$fp`) |
 | `Source`, `Up` | `CCam+0x1b0`, `CCam+0x1d0` | | loaded by `CCamera::Process` at `0x089012cc` into `sp+0x70` and `sp+0x90` (`$s7`) |
 | car zoom | `TheCamera+0xcc` (float) | `0x08b8346c` | 1, 2, 3 as Select cycles the car distances |
+| on-foot distance base | `TheCamera+0x13c` (float) | `0x08b834dc` | `Process_FollowPed` adds table `[1]` to it for the bottom of its distance band; 2.5 in play, 0.5 in the first mission's cutscene |
 | TheCamera's matrix | `TheCamera+0x00` | | right `+0`, Front `+0x10`, Up `+0x20`, Source `+0x30`, copied from the three stack vectors at `0x0890232c` |
 | `PlayerWeaponMode.Mode` (s16) | `TheCamera+0x954` | `0x08b83cf4` | `CCamera::Using1stPersonWeaponMode` (`0x088ee37c`) |
 
@@ -261,6 +262,7 @@ how mouse look switches each off):
 | | address | effect |
 |---|---|---|
 | pitch spring | tuning table `0x08b359bc`, `[5]` (0.8; second set 0.9 at `0x08b35a0c`) | Alpha moves `1 - [5]^TimeStep` back to a default each frame; `[13]`/`[14]` (0.785 / 1.484) are the pitch limits |
+| target and distance | same table, `[0]` 0.6, `[1]` 2.0, `[4]` 4.0 | the camera looks at the player's origin + `[0]` up; its distance band runs from `TheCamera+0x13c + [1]` up to at least `[4]`. Measured 4.1-4.5 in the open |
 | yaw correction | `add.s $f12, $f12, $f13` at `0x088f2acc` | adds `(targetYaw - Beta) / TimeStep` to the yaw rate; undoes a written yaw |
 | obstacle nudge | float `0x08b35d70` | `(i - 2) * 0.03` per ray hit, added to Beta, decays by 0.95 |
 | yaw rate | `CCam+0xd0` | smoothed by `[8]`, clamped to `[9]` |

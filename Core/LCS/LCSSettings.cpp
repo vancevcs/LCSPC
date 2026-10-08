@@ -45,10 +45,11 @@ void LoadSettings() {
 	section->Get("MouseSensitivity", &g_settings.mouseSensitivity);
 	section->Get("InvertMouseY", &g_settings.invertMouseY);
 	section->Get("VehicleChaseCamera", &g_settings.vehicleChaseCamera);
-	NOTICE_LOG(Log::System, "LCS: settings loaded (FrameRate60 = %s, KeyboardMouse = %s, MouseLook = %s, MouseSensitivity = %g, VehicleChaseCamera = %s)",
+	section->Get("FootChaseCamera", &g_settings.footChaseCamera);
+	NOTICE_LOG(Log::System, "LCS: settings loaded (FrameRate60 = %s, KeyboardMouse = %s, MouseLook = %s, MouseSensitivity = %g, VehicleChaseCamera = %s, FootChaseCamera = %s)",
 		g_settings.frameRate60 ? "true" : "false", g_settings.keyboardMouse ? "true" : "false",
 		g_settings.mouseLook ? "true" : "false", g_settings.mouseSensitivity,
-		g_settings.vehicleChaseCamera ? "true" : "false");
+		g_settings.vehicleChaseCamera ? "true" : "false", g_settings.footChaseCamera ? "true" : "false");
 }
 
 void SaveSettings() {
@@ -61,6 +62,7 @@ void SaveSettings() {
 	section->Set("MouseSensitivity", g_settings.mouseSensitivity);
 	section->Set("InvertMouseY", g_settings.invertMouseY);
 	section->Set("VehicleChaseCamera", g_settings.vehicleChaseCamera);
+	section->Set("FootChaseCamera", g_settings.footChaseCamera);
 	if (!ini.Save(SettingsPath())) {
 		ERROR_LOG(Log::System, "LCS: could not write %s", SettingsPath().c_str());
 	}

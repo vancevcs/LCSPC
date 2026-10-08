@@ -3,8 +3,8 @@
 `Core/LCS/LCSInput.cpp`, with the seams in `UI/NativeApp.cpp` (`NativeKey`, `NativeMouseDelta`) and
 `Core/HLE/sceKernelTime.cpp` (`sceKernelGetSystemTimeWide`, the frame boundary). Settings in
 `PSP/SYSTEM/lcs.ini` and the Input tab of Debug -> LCS: `KeyboardMouse`, `MouseLook`,
-`MouseSensitivity` (rad per count, default 0.0025), `InvertMouseY`, and `VehicleChaseCamera` for
-the vehicle camera (chase-camera.md).
+`MouseSensitivity` (rad per count, default 0.0025), `InvertMouseY`, and `FootChaseCamera` /
+`VehicleChaseCamera` for the camera the mouse turns (chase-camera.md).
 
 ## The game's own layout
 
@@ -78,6 +78,11 @@ Escape, F-keys and everything not in the table stay PPSSPP's.
 
 ## Mouse look on foot: taking the camera over
 
+With `FootChaseCamera` on (the default) the mouse turns the chase camera, which replaces mode 4's
+view and writes `Beta` / `Alpha` from it every frame so walking and aiming follow the view
+(chase-camera.md). The takeover below stays either way: it is what makes those angles hold. With
+`FootChaseCamera` off, the mouse writes the angles itself and mode 4 is the view, as measured below.
+
 Writing `Cams[ActiveCam].Beta` / `Alpha` turns the camera, but `Process_FollowPed` fights three
 ways, each measured and each switched off only while the mouse drives the on-foot camera
 (`SetCameraTakenOver`):
@@ -132,6 +137,10 @@ Three traps:
 - **The pipe runs per host frame: 30 Hz at the game's 30 fps, 60 at 60.** 25 `look` + `wait 1`
   pairs take 1.67 s at 30; measure after that, or the tail lands in the next measurement. Hours
   went into "lost" mouse input that was a too-short wait.
+- **Pipe keys skip NativeKey's ImGui filter.** With an ImGui window focused (one click on
+  Debug -> LCS), NativeKey keeps keyboard keys from the game; a test then saw F and S do nothing.
+  The pipe hands keys to `LCS::HandleHostKey` first, and only the ones it doesn't claim go through
+  `NativeKey`.
 - **Run tests with "Use mouse control" off.** With it on, the desk's real mouse moves the camera
   whenever PPSSPP has focus, which it takes at launch. The pipe's `look` bypasses the setting.
 - **Don't minimise PPSSPP during boot.** It stalls the boot, and killing it then left

@@ -46,7 +46,7 @@ Core/LCS/            no ImGui, UI or renderer dependencies
   LCSSettings        PSP/SYSTEM/lcs.ini, loaded when the layer activates
   LCSFrameRate       60 fps: frame cap + millisecond carry, re-checked every tick (frame-rate.md)
   LCSInput           keyboard and mouse by context; mouse look on foot (input.md)
-  LCSChaseCam        the vehicle camera: two hooks and a program in CCamera::Process (chase-camera.md)
+  LCSChaseCam        the camera on foot and in vehicles: two hooks and a program in CCamera::Process (chase-camera.md)
   LCSMips.h          encoders for programs written into PSP memory
 UI/ImDebugger/ImLCS  the Debug -> LCS window (state, table, input, scratchpad, the 60 fps switch)
 UI/LCSDevInput       dev only: LCS_KEY_PIPE scripted keys and mouse
