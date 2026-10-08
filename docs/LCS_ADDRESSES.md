@@ -343,6 +343,23 @@ finds nothing at the absolute address. Live: 0 in play, 1 with the pause menu up
 again after a second Start (and after Backspace -> Circle through the input layer). The game frame
 counter keeps advancing while it is up.
 
+### Free aim - live and static, [lcs/free-aim.md](lcs/free-aim.md)
+
+| | where | how found |
+|---|---|---|
+| free-aim camera | mode 11, Process `0x088f07cc` (shared with 28) | entered with R held + d-pad down; read live |
+| `m_pPointGunAt` | `ped+0x6bc` | mode 11 and FireInstantHit both read it; in free aim an object (type 4) the game keeps along Front from the pivot |
+| free aiming | `ped+0xc9d` (u8) | mode 11 tests it; 1 in free aim, 0 in lock-on and on foot |
+| entity type | `(entity+0x44 & 0xe) >> 1` | 1 building, 2 vehicle, 3 ped, 4 object (mode 11 and FireInstantHit test 6 and 0xc) |
+| aim pivot | `0x088ebad8` | decompiled; the formula reproduces a point on the camera's centre line to 0.000 |
+| turn rate toward the target | `0x08b35920` = 0.1 (x TimeStep) | decompiled |
+| weapon info | `[[0x08b5e660] + (byte 0x08b56c7c ? 0 : 4)] + type x 0x70`; fire type +0, range +4 | GetWeaponInfo `0x0894d97c`; type 26 reads 1 / 90.0 live |
+| CWeapon::FireInstantHit | `0x08857ef8` (weapon, shooter, source) | calls GetWeaponInfo and the raycast wrapper four times |
+| raycast wrapper | `0x08852188` | forwards a0-a3 and the flags to ProcessLineOfSight; nine callers, all in CWeapon |
+| the player's free-aim shot | `jal 0x08852188` at `0x08858638` (`0e214862`); `$t1` the shooter | log-only breakpoints on all nine call sites, interpreter: one hit per bullet, here only |
+| crosshair position | `TheCamera+0x180` / `+0x184` (0.53 / 0.47) | mode 11 reads them; skipped in free aim |
+| screen aspect | `0x08b30d68` (1.7778 live) | mode 11 divides the crosshair's y by it |
+
 ### The frame boundary's return address `0x08ab33a0`
 
 The `jal sceKernelGetSystemTimeWide` at `0x08ab3398`, the first call after the frame wait loop:

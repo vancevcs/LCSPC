@@ -27,6 +27,7 @@
 #include "Core/LCS/LCSAddresses.h"
 #include "Core/LCS/LCSChaseCam.h"
 #include "Core/LCS/LCSFrameRate.h"
+#include "Core/LCS/LCSFreeAim.h"
 #include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSSettings.h"
@@ -124,6 +125,7 @@ void NoteBootExecutable(const u8 *elf, size_t size) {
 void Shutdown() {
 	if (g_active) {
 		RemoveChaseCam();
+		RemoveFreeAim();
 	}
 	ClearState();
 	FrameRateReset();
@@ -157,6 +159,7 @@ void Tick() {
 	g_tickCount++;
 	FrameRateTick();
 	InstallChaseCam();
+	InstallFreeAim();
 	UpdateSharedState();
 	InputTick(GetState());
 }

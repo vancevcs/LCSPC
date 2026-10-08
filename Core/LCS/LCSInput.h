@@ -18,6 +18,8 @@
 #pragma once
 
 #include <cstddef>
+#include <string>
+#include <vector>
 
 #include "Common/CommonTypes.h"
 #include "Common/Input/InputState.h"
@@ -64,6 +66,18 @@ void InputTick(const LCSState &state);
 void InputFrameBoundary();
 // Releases everything this layer holds and forgets held keys.
 void ResetInput();
+
+// PSP buttons pressed from Debug -> LCS -> Pad (CTRL_* masks). Taps play in order on the vblank
+// tick, each held 6 vblanks with 6 between, which is what a cheat needs; held buttons stay down
+// until released. ResetInput drops both.
+void QueuePadTaps(const std::vector<u32> &masks);
+void SetPadHeld(u32 mask, bool held);
+u32 PadHeld();
+int PadTapsPending();
+// "Up Square, Square Down" -> CTRL_* masks, one per tap; "+" joins buttons pressed together
+// ("L+R"). Names: Up Down Left Right Triangle Circle Cross (or X) Square L R Start Select, any
+// case. False with the first unknown word in *bad.
+bool ParsePadSequence(const std::string &text, std::vector<u32> *out, std::string *bad);
 
 InputContext CurrentInputContext();
 u32 AppliedButtons();

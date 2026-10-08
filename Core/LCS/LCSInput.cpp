@@ -18,15 +18,19 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <deque>
 #include <map>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include "Common/Common.h"
 #include "Common/Log.h"
+#include "Common/StringUtils.h"
 #include "Core/HLE/sceCtrl.h"
 #include "Core/LCS/LCSAddresses.h"
 #include "Core/LCS/LCSChaseCam.h"
+#include "Core/LCS/LCSFreeAim.h"
 #include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSMemory.h"
 #include "Core/LCS/LCSSettings.h"
@@ -46,7 +50,8 @@ const KeyMapping kKeyMappings[] = {
 	{ kFoot, NKCODE_SHIFT_LEFT,        CTRL_CROSS,                     "Sprint" },
 	{ kFoot, NKCODE_EXT_MOUSEBUTTON_1, CTRL_CIRCLE,                    "Attack / fire" },
 	{ kFoot, NKCODE_CTRL_LEFT,         CTRL_CIRCLE,                    "Attack / fire" },
-	{ kFoot, NKCODE_EXT_MOUSEBUTTON_2, CTRL_RTRIGGER,                  "Lock on (hold)" },
+	{ kFoot, NKCODE_EXT_MOUSEBUTTON_2, CTRL_RTRIGGER,                  "Aim (hold; free aim with a gun)" },
+	{ kFoot, NKCODE_EXT_MOUSEBUTTON_3, CTRL_RTRIGGER,                  "Lock on (hold)" },
 	{ kFoot, NKCODE_X,                 CTRL_DOWN,                      "Free aim (tap while locked on)" },
 	{ kFoot, NKCODE_F,                 CTRL_TRIANGLE,                  "Enter vehicle / hang up" },
 	{ kFoot, NKCODE_Q,                 CTRL_LEFT,                      "Previous weapon / previous target" },
@@ -133,6 +138,25 @@ static int g_pendingWheel = 0;      // positive: next, negative: previous
 static u32 g_pulseButton = 0;
 static int g_pulseTicks = 0;
 static int g_pulseGap = 0;
+
+// PSP buttons pressed from Debug -> LCS -> Pad. Under g_mutex: the window queues, the tick plays.
+// A tap is held for kPadTapTicks vblanks, then nothing for kPadGapTicks: the game samples the pad
+// once a frame (two vblanks at 30 fps), and a cheat needs a release between two presses of the
+// same button.
+static constexpr int kPadTapTicks = 6;
+static constexpr int kPadGapTicks = 6;
+static std::deque<u32> g_padQueue;
+static u32 g_padTap = 0;
+static int g_padTicks = 0;      // > 0 holding g_padTap, < 0 in the gap after it
+static u32 g_padHeld = 0;
+
+// The aim key (right mouse: R) going down with a gun presses the game's Free Aim (d-pad down) too,
+// so aiming is free aim from the start, as on a PC, instead of lock-on to break out of. VCS's
+// autoFreeAim. kFreeAimDelayTicks after the edge, held kFreeAimPulseTicks.
+static constexpr int kFreeAimDelayTicks = 4;
+static constexpr int kFreeAimPulseTicks = 6;
+static bool g_aimKeyWas = false;
+static int g_freeAimPulse = 0;
 
 const char *InputContextName(InputContext context) {
 	switch (context) {
@@ -228,6 +252,26 @@ bool HandleMouseDelta(float dx, float dy) {
 	return true;
 }
 
+// This tick's share of the pad panel: its held buttons and the tap being played, if any.
+static u32 PadPanelStep() {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	if (g_padTicks == 0 && !g_padQueue.empty()) {
+		g_padTap = g_padQueue.front();
+		g_padQueue.pop_front();
+		g_padTicks = kPadTapTicks;
+	}
+	u32 mask = g_padHeld;
+	if (g_padTicks > 0) {
+		mask |= g_padTap;
+		if (--g_padTicks == 0) {
+			g_padTicks = -kPadGapTicks;
+		}
+	} else if (g_padTicks < 0) {
+		g_padTicks++;
+	}
+	return mask;
+}
+
 static void ApplyButtons(InputContext context, const std::vector<std::pair<InputKeyCode, HeldKey>> &held, int wheel) {
 	u32 mask = 0;
 	if (context != InputContext::Unknown) {
@@ -241,6 +285,29 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 				}
 			}
 		}
+	}
+
+	// Right mouse on foot, the aim binding; the middle button is the same R for the game's lock-on and
+	// starts no free aim, and neither does C (L + R, look behind).
+	bool aimKey = false;
+	if (context == kFoot && (mask & CTRL_LTRIGGER) == 0) {
+		for (const auto &[key, h] : held) {
+			if (key == NKCODE_EXT_MOUSEBUTTON_2 && KeyLive(h, context)) {
+				aimKey = true;
+			}
+		}
+	}
+	if (aimKey && !g_aimKeyWas && Settings().freeAim && PlayerHasFirearm()) {
+		g_freeAimPulse = kFreeAimDelayTicks + kFreeAimPulseTicks;
+	} else if (!aimKey) {
+		g_freeAimPulse = 0;
+	}
+	g_aimKeyWas = aimKey;
+	if (g_freeAimPulse > 0) {
+		if (g_freeAimPulse <= kFreeAimPulseTicks) {
+			mask |= CTRL_DOWN;
+		}
+		g_freeAimPulse--;
 	}
 
 	if (context == kFoot || context == kCar) {
@@ -261,6 +328,7 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 		g_pulseTicks = kPulseHoldTicks;
 		mask |= g_pulseButton;
 	}
+	mask |= PadPanelStep();
 
 	// Release only what this layer pressed last tick. A real pad or PPSSPP's mapper may hold the
 	// same button, and clearing it would cancel their press.
@@ -274,7 +342,14 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 static void ApplyStick(InputContext context, const std::vector<std::pair<InputKeyCode, HeldKey>> &held) {
 	float x = 0.0f;
 	float y = 0.0f;
+	// In the game's free aim the stick is the aim: WASD there turned the view against the mouse
+	// (0.04 rad a second each way) and moved nobody. So it stays centred and the player stands to
+	// aim, as on the PSP.
+	const bool freeAim = context == kFoot && Settings().freeAim && FreeAimActive();
 	for (const auto &[key, h] : held) {
+		if (freeAim) {
+			break;
+		}
 		if (!KeyLive(h, context)) {
 			continue;
 		}
@@ -417,6 +492,11 @@ void InputFrameBoundary() {
 		g_mouseDY = 0.0f;
 	}
 	const InputContext context = g_context.load(std::memory_order_relaxed);
+	// Free aim first: it is on foot, in mode 11, which no other look path takes.
+	const LCSSettings &s = Settings();
+	if (context == kFoot && s.freeAim && s.keyboardMouse && s.mouseLook && FreeAimLook(dx, dy)) {
+		return;
+	}
 	if (context == kCar && ChaseCamTakesLook(kCar)) {
 		// The chase camera's convention: yaw counter-clockwise from above, pitch up. The mouse to
 		// the right turns the view right; away from you looks up.
@@ -436,6 +516,9 @@ void ResetInput() {
 		g_mouseDY = 0.0f;
 		g_wheelUp = 0;
 		g_wheelDown = 0;
+		g_padQueue.clear();
+		g_padTicks = 0;
+		g_padHeld = 0;
 	}
 	g_context.store(InputContext::Unknown, std::memory_order_relaxed);
 	g_mouseDriving.store(false, std::memory_order_relaxed);
@@ -453,6 +536,8 @@ void ResetInput() {
 	g_pendingWheel = 0;
 	g_pulseTicks = 0;
 	g_pulseGap = 0;
+	g_aimKeyWas = false;
+	g_freeAimPulse = 0;
 }
 
 InputContext CurrentInputContext() {
@@ -461,6 +546,87 @@ InputContext CurrentInputContext() {
 
 u32 AppliedButtons() {
 	return g_lastMask;
+}
+
+struct PadButtonName {
+	const char *name;
+	u32 mask;
+};
+static const PadButtonName kPadNames[] = {
+	{ "Up", CTRL_UP }, { "Down", CTRL_DOWN }, { "Left", CTRL_LEFT }, { "Right", CTRL_RIGHT },
+	{ "Triangle", CTRL_TRIANGLE }, { "Circle", CTRL_CIRCLE }, { "Cross", CTRL_CROSS }, { "X", CTRL_CROSS },
+	{ "Square", CTRL_SQUARE }, { "L", CTRL_LTRIGGER }, { "R", CTRL_RTRIGGER },
+	{ "Start", CTRL_START }, { "Select", CTRL_SELECT },
+};
+
+// "Up Square, Square Down" -> masks; a "+" joins buttons pressed together ("L+R"). False with the
+// first word it doesn't know in *bad.
+bool ParsePadSequence(const std::string &text, std::vector<u32> *out, std::string *bad) {
+	out->clear();
+	std::string word;
+	auto flush = [&]() {
+		if (word.empty()) {
+			return true;
+		}
+		u32 mask = 0;
+		size_t start = 0;
+		while (start <= word.size()) {
+			const size_t plus = word.find('+', start);
+			const std::string part = word.substr(start, plus == std::string::npos ? std::string::npos : plus - start);
+			u32 one = 0;
+			for (const PadButtonName &n : kPadNames) {
+				if (equalsNoCase(part, n.name)) {
+					one = n.mask;
+				}
+			}
+			if (!one) {
+				*bad = part;
+				return false;
+			}
+			mask |= one;
+			if (plus == std::string::npos) {
+				break;
+			}
+			start = plus + 1;
+		}
+		out->push_back(mask);
+		word.clear();
+		return true;
+	};
+	for (char c : text) {
+		if (c == ' ' || c == ',' || c == '\t') {
+			if (!flush()) {
+				return false;
+			}
+		} else {
+			word += c;
+		}
+	}
+	return flush();
+}
+
+void QueuePadTaps(const std::vector<u32> &masks) {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	for (u32 mask : masks) {
+		if (mask != 0) {
+			g_padQueue.push_back(mask);
+		}
+	}
+}
+
+void SetPadHeld(u32 mask, bool held) {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	g_padHeld = held ? (g_padHeld | mask) : (g_padHeld & ~mask);
+}
+
+u32 PadHeld() {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	return g_padHeld;
+}
+
+int PadTapsPending() {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	return (int)g_padQueue.size() + (g_padTicks > 0 ? 1 : 0);
 }
 
 bool MouseLookEngaged() {

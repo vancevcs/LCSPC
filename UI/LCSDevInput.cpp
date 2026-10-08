@@ -121,6 +121,17 @@ void LCSDevKeyPipeTick() {
 			}
 			continue;
 		}
+		if (verb == "pad") {
+			// PSP buttons, as Debug -> LCS -> Pad plays them: "pad Up Square Square Down".
+			std::vector<u32> masks;
+			std::string bad;
+			if (LCS::ParsePadSequence(arg, &masks, &bad)) {
+				LCS::QueuePadTaps(masks);
+			} else {
+				NOTICE_LOG(Log::System, "LCS_KEY_PIPE: no PSP button called '%s'", bad.c_str());
+			}
+			continue;
+		}
 		if (verb == "look") {
 			// Straight to the LCS layer rather than through NativeMouseDelta, so a test runs with
 			// "Use mouse control" off and the desk's real mouse can't add to what the script sends.

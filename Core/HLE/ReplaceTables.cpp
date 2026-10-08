@@ -34,6 +34,7 @@
 #include "Core/MIPS/MIPSAnalyst.h"
 #include "Core/HLE/ReplaceTables.h"
 #include "Core/LCS/LCSChaseCam.h"  // Fork-specific
+#include "Core/LCS/LCSFreeAim.h"  // Fork-specific
 #include "Core/HLE/FunctionWrappers.h"
 #include "Core/HLE/sceDisplay.h"
 
@@ -1668,6 +1669,9 @@ static const ReplacementTableEntry entries[] = {
 	// never matched by hash, so inert for every other game.
 	{ "lcs_camera_prepare", &LCS::Hook_lcs_camera_prepare, 0, REPFLAG_HOOKENTER },
 	{ "lcs_camera_finish", &LCS::Hook_lcs_camera_finish, 0, REPFLAG_HOOKENTER },
+	// And the player's raycast in CWeapon::FireInstantHit, for free aim (Core/LCS/LCSFreeAim.h).
+	{ "lcs_fire_raycast", &LCS::Hook_lcs_fire_raycast, 0, REPFLAG_HOOKENTER },
+	{ "lcs_fire_raycast_done", &LCS::Hook_lcs_fire_raycast_done, 0, REPFLAG_HOOKENTER },
 	// This is actually used in other games, not just Dissidia.
 	{ "dissidia_recordframe_avi", &Hook_dissidia_recordframe_avi, 0, REPFLAG_HOOKENTER },
 	{ "brandish_download_frame", &Hook_brandish_download_frame, 0, REPFLAG_HOOKENTER },

@@ -3,8 +3,9 @@
 `Core/LCS/LCSInput.cpp`, with the seams in `UI/NativeApp.cpp` (`NativeKey`, `NativeMouseDelta`) and
 `Core/HLE/sceKernelTime.cpp` (`sceKernelGetSystemTimeWide`, the frame boundary). Settings in
 `PSP/SYSTEM/lcs.ini` and the Input tab of Debug -> LCS: `KeyboardMouse`, `MouseLook`,
-`MouseSensitivity` (rad per count, default 0.0025), `InvertMouseY`, and `FootChaseCamera` /
-`VehicleChaseCamera` for the camera the mouse turns (chase-camera.md).
+`MouseSensitivity` (rad per count, default 0.0025), `InvertMouseY`, `FootChaseCamera` /
+`VehicleChaseCamera` for the camera the mouse turns (chase-camera.md), and `MouseFreeAim`
+(free-aim.md).
 
 ## The game's own layout
 
@@ -42,7 +43,8 @@ in both games. Debug -> LCS -> Input lists it.
 | W A S D | move (the stick) | W accelerate, S brake / reverse, A D steer | move |
 | Up / Down arrows | (PPSSPP's d-pad) | lean a bike, aim a water cannon | (PPSSPP's d-pad) |
 | Left mouse, Left Ctrl | fire | fire | |
-| Right mouse | lock on | | |
+| Right mouse | aim: with a gun, straight into free aim, aimed by the mouse | | |
+| Middle mouse | lock on (the game's R, no free aim) | | |
 | Space | jump | handbrake | select |
 | Left Shift | sprint | (claimed, does nothing: PPSSPP's rapid fire) | |
 | F | enter vehicle / hang up | exit / hang up | |
@@ -125,6 +127,14 @@ In a car, on a bike or in a boat the mouse turns the chase camera (`ChaseCamAddL
 game's angles: mode 18 swings a written yaw back. chase-camera.md has all of it. With
 `VehicleChaseCamera` off the mouse does nothing in a vehicle, as before.
 
+## PSP buttons from the debugger
+
+Debug -> LCS -> Pad presses PSP buttons through this layer: a click taps one (held 6 vblanks), a
+Hold box keeps it down, and a sequence ("Up Square Square Down Left Square Square Right", "+" for
+buttons together) plays as taps with 6-vblank gaps, which is what the game's cheats need. Presets
+for the three weapon sets, all three confirmed (weapons appear in `ped+0x594`). The pipe's
+`pad <sequence>` plays the same queue.
+
 ## Testing without the keyboard
 
 `LCS_KEY_PIPE=<file>` makes `UI/LCSDevInput.cpp` read `press`/`down`/`up`/`look`/`wait` lines
@@ -149,8 +159,8 @@ Three traps:
 
 ## Not done
 
-- Free aim with the mouse (the game's free aim is entered with D-Down while locked on), and aiming
-  in general (modes 11/28, 7/8/34/45/46).
+- Walking while free-aiming (free-aim.md), lock-on aimed with the mouse, and the scoped and
+  first-person weapons (modes 7/8/34/45/46).
 - Gamepads: the layer only claims keyboard and mouse; a pad goes to PPSSPP's mapper with the PSP
   layout.
 - Rebinding, a walk modifier, direct weapon selection by number.

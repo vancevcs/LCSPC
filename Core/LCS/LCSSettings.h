@@ -41,6 +41,9 @@ struct LCSSettings {
 	// The same on foot: the mouse orbits a camera that comes in along its line when something is
 	// in the way. Off goes back to writing the game's own angles. Needs keyboardMouse and mouseLook.
 	bool footChaseCamera = true;
+	// Right mouse with a gun drops straight into the game's free aim, the mouse aims and the shot
+	// goes where the reticle is (LCSFreeAim). Off leaves R as the game's lock-on.
+	bool freeAim = true;
 };
 
 LCSSettings &Settings();

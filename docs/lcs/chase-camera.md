@@ -148,8 +148,9 @@ was put between the camera and the player.
 
 ## Not done / unchecked
 
-- Aiming (lock-on, free aim, first person) is the game's camera; handing over to and from it was not
-  checked live, nor the drive-by.
+- Aiming is the game's camera: free aim is mode 11, aimed by LCSFreeAim (free-aim.md), and the
+  hand-over to and back from it blends as any other (checked: letting go of free aim resumes from
+  where the aim was). Lock-on, first person and the drive-by were not checked.
 - Looking up with a car right behind the player leaves only sky: the camera is pushed to the head
   and lifted over it. Same as VCS.
 - Boats (mode 22) and bikes: the code takes them, but only Vincenzo's car was measured (a bike's

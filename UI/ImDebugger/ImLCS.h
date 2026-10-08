@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "Common/CommonTypes.h"
 
 struct ImConfig;
@@ -38,6 +40,11 @@ private:
 	void DrawScratchpad();
 	void DrawInput();
 	void DrawCamera();
+	void DrawPad();
+	void DrawAim();
+
+	char cheatText_[128] = "Up Square Square Down Left Square Square Right";
+	std::string cheatError_;
 
 	static constexpr int kScratchRows = 8;
 

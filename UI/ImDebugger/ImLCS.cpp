@@ -21,6 +21,7 @@
 #include <string>
 
 #include "ext/imgui/imgui.h"
+#include "Common/StringUtils.h"
 #include "Core/Config.h"
 #include "Core/HLE/sceCtrl.h"
 #include "Core/KeyMap.h"
@@ -28,6 +29,7 @@
 #include "Core/LCS/LCSAddresses.h"
 #include "Core/LCS/LCSChaseCam.h"
 #include "Core/LCS/LCSFrameRate.h"
+#include "Core/LCS/LCSFreeAim.h"
 #include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSMemory.h"
@@ -465,6 +467,108 @@ void ImLCSWindow::DrawCamera() {
 	ImGui::TextDisabled("Tuning is for this session only.");
 }
 
+// --- Pad: PSP buttons pressed from here, for cheats and anything a key isn't bound to ---
+
+// The game's cheats are typed on the pad during play, on foot or in a car.
+struct PadCheat {
+	const char *name;
+	const char *sequence;
+};
+static const PadCheat kPadCheats[] = {
+	{ "Weapon set 1", "Up Square Square Down Left Square Square Right" },
+	{ "Weapon set 2", "Up Circle Circle Down Left Circle Circle Right" },
+	{ "Weapon set 3", "Up Cross Cross Down Left Cross Cross Right" },
+};
+
+void ImLCSWindow::DrawPad() {
+	ImGui::TextWrapped("Click to tap a PSP button (held 6 vblanks). Hold keeps it down until clicked again. "
+		"Presses go through the LCS input layer, so they reach the game even with this window focused.");
+
+	auto tap = [](const char *label, u32 mask, float width = 70.0f) {
+		if (ImGui::Button(label, ImVec2(width, 0))) {
+			LCS::QueuePadTaps({ mask });
+		}
+	};
+	auto hold = [](const char *label, u32 mask) {
+		bool held = (LCS::PadHeld() & mask) != 0;
+		if (ImGui::Checkbox(label, &held)) {
+			LCS::SetPadHeld(mask, held);
+		}
+	};
+
+	tap("L", CTRL_LTRIGGER); ImGui::SameLine(); hold("hold##L", CTRL_LTRIGGER);
+	ImGui::SameLine(260.0f);
+	tap("R", CTRL_RTRIGGER); ImGui::SameLine(); hold("hold##R", CTRL_RTRIGGER);
+
+	const float x0 = ImGui::GetCursorPosX();
+	ImGui::SetCursorPosX(x0 + 74.0f); tap("Up", CTRL_UP);
+	ImGui::SameLine(x0 + 260.0f + 74.0f); tap("Triangle", CTRL_TRIANGLE);
+	ImGui::SetCursorPosX(x0); tap("Left", CTRL_LEFT); ImGui::SameLine(x0 + 148.0f); tap("Right", CTRL_RIGHT);
+	ImGui::SameLine(x0 + 260.0f); tap("Square", CTRL_SQUARE); ImGui::SameLine(x0 + 260.0f + 148.0f); tap("Circle", CTRL_CIRCLE);
+	ImGui::SetCursorPosX(x0 + 74.0f); tap("Down", CTRL_DOWN);
+	ImGui::SameLine(x0 + 260.0f + 74.0f); tap("Cross", CTRL_CROSS);
+	ImGui::SetCursorPosX(x0 + 74.0f); tap("Select", CTRL_SELECT);
+	ImGui::SameLine(x0 + 260.0f + 74.0f); tap("Start", CTRL_START);
+
+	ImGui::Separator();
+	ImGui::TextUnformatted("Sequence (spaces between taps, + for buttons together, e.g. L+R):");
+	ImGui::SetNextItemWidth(-80.0f);
+	ImGui::InputText("##cheat", cheatText_, sizeof(cheatText_));
+	ImGui::SameLine();
+	if (ImGui::Button("Play", ImVec2(70.0f, 0))) {
+		std::vector<u32> masks;
+		std::string bad;
+		if (LCS::ParsePadSequence(cheatText_, &masks, &bad)) {
+			cheatError_.clear();
+			LCS::QueuePadTaps(masks);
+		} else {
+			cheatError_ = "No button called '" + bad + "'";
+		}
+	}
+	if (!cheatError_.empty()) {
+		ImGui::TextColored(kBadColor, "%s", cheatError_.c_str());
+	}
+	for (const PadCheat &cheat : kPadCheats) {
+		if (ImGui::Button(cheat.name)) {
+			std::vector<u32> masks;
+			std::string bad;
+			if (LCS::ParsePadSequence(cheat.sequence, &masks, &bad)) {
+				LCS::QueuePadTaps(masks);
+			}
+		}
+		ImGui::SameLine();
+		ImGui::TextDisabled("%s", cheat.sequence);
+	}
+	const int pending = LCS::PadTapsPending();
+	ImGui::Text("Playing: %s", pending ? std::to_string(pending).append(" taps left").c_str() : "-");
+	ImGui::Text("Holding: %s", ButtonNames(LCS::AppliedButtons()).c_str());
+}
+
+void ImLCSWindow::DrawAim() {
+	LCS::LCSSettings &settings = LCS::Settings();
+	if (ImGui::Checkbox("Mouse free aim", &settings.freeAim)) {
+		LCS::SaveSettings();
+	}
+	ImGui::SameLine();
+	ImGui::TextDisabled("right mouse with a gun: the game's free aim, aimed by the mouse");
+	LCS::LCSFreeAimTuning &t = LCS::FreeAimTuning();
+	ImGui::Checkbox("Shots down the reticle", &t.redirectShots);
+
+	LCS::LCSFreeAimStats s;
+	LCS::FreeAimGetStats(&s);
+	ImGui::Separator();
+	ImGui::Text("Fire hook: %s", s.status);
+	ImGui::Text("Free aim: %s%s   firearm: %s", s.active ? "active" : "-", s.holding ? " (holding)" : "",
+		LCS::PlayerHasFirearm() ? "yes" : "no");
+	ImGui::Text("Aim: Beta %.3f  Alpha %.3f   target %08x at %.1f", s.yaw, s.pitch, s.target, s.targetDistance);
+	ImGui::Text("Player shots seen %llu, redirected %llu   last: weapon %d, range %.0f",
+		(unsigned long long)s.seen, (unsigned long long)s.redirected, s.lastWeaponType, s.lastRange);
+	if (s.haveHit) {
+		ImGui::Text("Last hit %.2f %.2f %.2f, %.3f off the camera's centre line", s.lastHit[0], s.lastHit[1],
+			s.lastHit[2], s.lastHitOffLine);
+	}
+}
+
 void ImLCSWindow::Draw(ImConfig &cfg) {
 	ImGui::SetNextWindowSize(ImVec2(600, 480), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("LCS", &cfg.lcsOpen)) {
@@ -486,6 +590,14 @@ void ImLCSWindow::Draw(ImConfig &cfg) {
 		}
 		if (ImGui::BeginTabItem("Input")) {
 			DrawInput();
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Aim")) {
+			DrawAim();
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Pad")) {
+			DrawPad();
 			ImGui::EndTabItem();
 		}
 		if (ImGui::BeginTabItem("Camera")) {

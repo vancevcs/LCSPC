@@ -344,6 +344,7 @@
     <ClInclude Include="..\..\Core\LCS\LCSMemory.h" />
     <ClInclude Include="..\..\Core\LCS\LCSMips.h" />
     <ClInclude Include="..\..\Core\LCS\LCSState.h" />
+    <ClInclude Include="..\..\Core\LCS\LCSFreeAim.h" />
     <ClInclude Include="..\..\Core\LCS\LCSChaseCam.h" />
     <ClInclude Include="..\..\Core\LCS\LCSInput.h" />
     <ClInclude Include="..\..\Core\LCS\LCSFrameRate.h" />
@@ -675,6 +676,7 @@
     <ClCompile Include="..\..\Core\LCS\LCSGame.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSMemory.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSState.cpp" />
+    <ClCompile Include="..\..\Core\LCS\LCSFreeAim.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSChaseCam.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSInput.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSFrameRate.cpp" />

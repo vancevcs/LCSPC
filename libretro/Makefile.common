@@ -904,6 +904,7 @@ SOURCES_CXX += \
 	       $(COREDIR)/LCS/LCSGame.cpp \
 	       $(COREDIR)/LCS/LCSMemory.cpp \
 	       $(COREDIR)/LCS/LCSState.cpp \
+	       $(COREDIR)/LCS/LCSFreeAim.cpp \
 	       $(COREDIR)/LCS/LCSChaseCam.cpp \
 	       $(COREDIR)/LCS/LCSInput.cpp \
 	       $(COREDIR)/LCS/LCSFrameRate.cpp \

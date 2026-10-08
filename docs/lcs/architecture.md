@@ -32,7 +32,7 @@ NOTICE line, and Debug -> LCS shows the reason.
 | `LCS::HandleHostKey()` | `NativeKey()`, in the `passKeyThrough` branch, before `g_controlMapper.Key` | a claimed key must not also reach the mapper |
 | `LCS::HandleMouseDelta()` | `NativeMouseDelta()`, after the `bMouseControl` check, skipped while ImGui wants the mouse | mouse look only with PPSSPP's mouse control on |
 | `LCS::OnFrameBoundary()` | `sceKernelGetSystemTimeWide()`, with `$ra` | the game calls it right after its frame wait, every frame: between frames, the only safe moment to write the camera. Not `sceDisplayWaitVblankStart`, which a frame that has used up the cap skips (input.md) |
-| `lcs_camera_prepare` / `lcs_camera_finish` | `Core/HLE/ReplaceTables.cpp` entries, plus `GetReplacementFuncIndexByName` / `WriteReplaceInstructionAt` | `REPFLAG_HOOKENTER` hooks installed by address, never by hash, so no other game can match them (chase-camera.md) |
+| `lcs_camera_prepare` / `lcs_camera_finish`, `lcs_fire_raycast` / `lcs_fire_raycast_done` | `Core/HLE/ReplaceTables.cpp` entries, plus `GetReplacementFuncIndexByName` / `WriteReplaceInstructionAt` | `REPFLAG_HOOKENTER` hooks installed by address, never by hash, so no other game can match them (chase-camera.md, free-aim.md) |
 | `LCSDevKeyPipeTick()` | `NativeFrame()`, after `g_OSD.Update` | dev only, `LCS_KEY_PIPE` |
 
 ## Files
@@ -47,8 +47,9 @@ Core/LCS/            no ImGui, UI or renderer dependencies
   LCSFrameRate       60 fps: frame cap + millisecond carry, re-checked every tick (frame-rate.md)
   LCSInput           keyboard and mouse by context; mouse look on foot (input.md)
   LCSChaseCam        the camera on foot and in vehicles: two hooks and a program in CCamera::Process (chase-camera.md)
+  LCSFreeAim         mouse free aim: the gun target, the camera's angles and a hook on the player's shot (free-aim.md)
   LCSMips.h          encoders for programs written into PSP memory
-UI/ImDebugger/ImLCS  the Debug -> LCS window (state, table, input, scratchpad, the 60 fps switch)
+UI/ImDebugger/ImLCS  the Debug -> LCS window (state, table, input, aim, PSP pad, camera, scratchpad)
 UI/LCSDevInput       dev only: LCS_KEY_PIPE scripted keys and mouse
 Tools/lcsimage.py    the EBOOT relocated into a RAM image: find, disasm, callers, xref
 Tools/lcsscm.py      script opcode -> handler address
@@ -56,7 +57,7 @@ Tools/lcsws.py       WebSocket debugger client: read, write, watch, press
 ```
 
 Tick order: base check (first tick only) -> `FrameRateTick` -> `InstallChaseCam` ->
-`UpdateSharedState` -> `InputTick` (context, buttons, stick). The mouse is applied from
+`InstallFreeAim` -> `UpdateSharedState` -> `InputTick` (context, buttons, stick, the pad panel). The mouse is applied from
 `OnFrameBoundary`, not the tick; the chase camera's hooks run inside the game's camera update.
 
 ## Threads

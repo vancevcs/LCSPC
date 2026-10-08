@@ -49,6 +49,7 @@ Core/LCS/ (no ImGui, UI, or renderer dependencies)
   LCSFrameRate    60 fps (cap + millisecond carry)
   LCSInput        keyboard and mouse by context; mouse look on foot
   LCSChaseCam     the camera on foot and in vehicles, replaced inside CCamera::Process
+  LCSFreeAim      mouse free aim: gun target + camera angles, and the player's shot down the reticle
   LCSMips.h       encoders for programs written into PSP memory
 UI/ImDebugger/ImLCS   the "LCS" debugger window (Debug -> LCS)
 UI/LCSDevInput        dev only: LCS_KEY_PIPE scripted keys and mouse (docs/lcs/input.md "Testing")
@@ -87,3 +88,4 @@ docs/lcs/architecture.md.
 | docs/lcs/frame-rate.md | 60 fps: what it patches, measurements, what's unchecked | touching CTimer or the frame wait |
 | docs/lcs/input.md | the game's layout, the bindings, key ownership, the on-foot camera takeover, testing | touching input or the camera |
 | docs/lcs/chase-camera.md | the chase camera: hook sites, the program, on foot / vehicle framing, savestates, the fixtures | touching the camera or adding a hook |
+| docs/lcs/free-aim.md | the game's free aim, the gun target, the fire hook, measurements, the armed fixtures | touching aiming or shooting |

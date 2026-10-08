@@ -216,6 +216,54 @@ inline constexpr u32 kLCSModelInfoColModelOffset = 0x14;
 inline constexpr u32 kLCSColModelBoxMinOffset = 0x10;
 inline constexpr u32 kLCSColModelBoxMaxOffset = 0x20;
 
+// --- Free aim (LCSFreeAim, docs/lcs/free-aim.md) ---
+//
+// The game's free aim: hold R, tap d-pad down. Camera mode 11 (Process at 0x088f07cc, shared with
+// 28), ped+0xc9d set. The rest of a CCam's basis, next to Front (kLCSCamFrontOffset):
+inline constexpr int kLCSCamModeFreeAim = 11;
+inline constexpr u32 kLCSCamFOVOffset = 0xc4;
+inline constexpr u32 kLCSCamSourceOffset = 0x1b0;
+inline constexpr u32 kLCSCamUpOffset = 0x1d0;
+// CPed::m_pPointGunAt: in free aim a placeholder OBJECT the game keeps along the camera's Front
+// from the aim pivot. Mode 11 turns Beta / Alpha toward it by at most 0.1 * TimeStep a frame
+// (0x08b35920), so it is the aim's master: a written Beta came back within 0.12 s, a written
+// target was kept and the camera followed it within a frame.
+inline constexpr u32 kLCSPedAimTargetOffset = 0x6bc;
+// u8, 1 while free aiming (0 in lock-on and on foot). Mode 11 skips its crosshair offsets and its
+// pitch clamp while it is set.
+inline constexpr u32 kLCSPedFreeAimingOffset = 0xc9d;
+// CEntity's flags; (flags & 0xe) >> 1 is the type: 1 building, 2 vehicle, 3 ped, 4 object.
+inline constexpr u32 kLCSEntityFlagsOffset = 0x44;
+inline constexpr u32 kLCSEntityTypeObject = 4;
+// The aim pivot (0x088ebad8): the ped's position + 0.6 up (+0.1 * min(1, (70 - FOV) / 20) more, and
+// 0 or 0.15 by weapon) + its right vector * (0.55 + 0.1 * min(1, (70 - FOV) / 35)), pulled back
+// by a building raycast from the ped. The camera's centre line passes through it: measured 0.000
+// off the line at three pitches.
+inline constexpr float kLCSAimPivotHeight = 0.6f;
+inline constexpr float kLCSAimPivotShoulder = 0.55f;
+// The pitch free aim reached with the stick held down / up for 2 s.
+inline constexpr float kLCSFreeAimPitchMin = -0.49f;
+inline constexpr float kLCSFreeAimPitchMax = 0.67f;
+// CWeaponInfo: kLCSWeaponInfoTables holds a pointer to two table pointers, [0] when the byte at
+// kLCSWeaponInfoSelect is set, else [1] (GetWeaponInfo, 0x0894d97c); 0x70 a weapon type; the fire
+// type at +0 (0 melee, 1 instant hit, 2 projectile...) and the range at +4 (FireInstantHit scales
+// its shot to it). Read live: type 26 is 1 / 90.0, 25 is 1 / 45.0, 12 is 2 / 30.0.
+inline constexpr u32 kLCSWeaponInfoTables = 0x08B5E660;
+inline constexpr u32 kLCSWeaponInfoSelect = 0x08B56C7C;
+inline constexpr u32 kLCSWeaponInfoStride = 0x70;
+inline constexpr u32 kLCSWeaponInfoRangeOffset = 0x04;
+// CWeapon::FireInstantHit (0x08857ef8; the weapon, the shooter, the source): the player's free-aim
+// shot raycasts through `jal 0x08852188` here, a wrapper that forwards (start, end, colpoint,
+// entity, flags...) to ProcessLineOfSight. At the jal, $a0 / $a1 point at the shot's start and end
+// and $t1 is the shooter. Caught with logging breakpoints: one hit per bullet, at this site only.
+inline constexpr u32 kLCSFireRaycastCall = 0x08858638;
+inline constexpr u32 kLCSFireRaycastCallOp = 0x0E214862;
+// Inside the wrapper, the first instruction after ProcessLineOfSight returns (`lw $ra, 0x40($sp)`):
+// where the borrowed start is given back. The op after the call in FireInstantHit is a branch,
+// which a HOOKENTER can't sit on.
+inline constexpr u32 kLCSFireRaycastDone = 0x088521DC;
+inline constexpr u32 kLCSFireRaycastDoneOp = 0x8FBF0040;
+
 // CVehicle::m_vehType. FindPlayerTrain (0x089d5860) compares it with 2.
 inline constexpr u32 kLCSVehicleTypeOffset = 0x344;
 
