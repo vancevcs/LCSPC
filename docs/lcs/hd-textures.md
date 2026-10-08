@@ -42,6 +42,7 @@ python Tools/lcshd.py match  --dump <TEXTURES/ULUS10041/new>
 python Tools/lcshd.py review --tier sure --dump ...   # contact sheets, alpha on a checkerboard
 python Tools/lcshd.py bind   --pack <TEXTURES/ULUS10041> --dump .../new --tier sure
 python Tools/lcshd.py dds    --pack <TEXTURES/ULUS10041>
+python Tools/lcshd.py merge  --pack <TEXTURES/ULUS10041>        # the HD UI/HUD pack, see below
 ```
 
 Work files go to `hd/` in the workspace root (the index, `matches.csv`, review sheets). The pack is
@@ -97,6 +98,20 @@ load, and a quarter (BC1) or half (BC7) of the memory of RGBA8.
 Checked in game: the car and park fixtures with the pack off, with PNGs and with DDS; the HD grass
 and dirt draw, at the PSP's brightness after the colour match.
 
+### The HD UI pack lives in the same folder
+
+`merge` brings in the hand-made pack in `Dev/gtalcspc/texturereplacements` (text, HUD, radar,
+weapons, buttons, map, front end: 137 hashes): its files are copied beside `android/`, its hashes go
+in as one block marked `# --- begin/end texturereplacements ---` at the top of `[hashes]`, and an
+Android binding of the same hash is dropped, so the hand-made art wins; `bind` then never adds one
+back, since it skips hashes the ini already has. That pack stays the source: change it, re-run
+`merge`, and the block is replaced. Its PNGs are not converted by `dds`, which only touches
+`android/` - block compression smears text and thin UI lines.
+
+Checked in game with both: the HD HUD (fist icon, digits, the help text's button glyph) over the
+HD dirt and grass. The two packs share no hash so far. The pack's ini names `HUD/Chisel.png`, and
+the file is `HUD/weapons/Chisel.png`, so that one icon does not load.
+
 ## Not done
 
 - **Coverage**: everything not yet dumped. Play with `SaveNewTextures` on, then re-run `match`,
@@ -105,7 +120,6 @@ and dirt draw, at the PSP's brightness after the colour match.
 - **World texture names** from the `.lvz` level files, which would let names join where pictures
   are ambiguous (flat colours, near-identical tiles).
 - **The 716 PNGs** in the OBB (`hud/`, `menu/`, `touch_fe/`, `fonts/`): the mobile UI, redone for
-  touch. The HUD has its own hand-made pack (`Dev/gtalcspc/texturereplacements`); merging it into
-  this ini first keeps its entries, since `bind` never overwrites a hash.
+  touch. Not used: the HUD and front end have their own hand-made pack (below).
 - Ped and vehicle textures that the PSP draws with palettes swapped per instance: each palette is a
   hash of its own, and each needs dumping.

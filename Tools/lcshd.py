@@ -10,6 +10,7 @@ HD version look alike once both are shrunk to a thumbnail.
     python Tools/lcshd.py review  [--tier sure|likely|review]
     python Tools/lcshd.py bind    --pack <memstick>/PSP/TEXTURES/ULUS10041 --dump <...>/new [--tier sure|likely]
     python Tools/lcshd.py dds     --pack <memstick>/PSP/TEXTURES/ULUS10041
+    python Tools/lcshd.py merge   --pack <memstick>/PSP/TEXTURES/ULUS10041 [--from <hand-made pack>]
 
 Work files go to --work (default: hd/ in the workspace, beside ppsspp/): the Android index
 (android.npz), the dump index (dump.npz, rebuilt when the dump grows), matches.csv and the review
@@ -34,6 +35,10 @@ bind    writes the matched HD textures into the pack as PNG, and their hashes in
         adds only the detail.
 dds     converts the pack's bound PNGs with texconv: BC1 for opaque art, BC7 for art with alpha,
         one level (mipmaps would hand back the PSP's resolution), and points the ini at them.
+        Only android/ is converted: block compression smears text and thin UI lines.
+merge   brings a hand-made pack in (default: texturereplacements/ beside ppsspp/, the HD UI and HUD
+        pack): its files are copied beside android/ and its hashes go in as one marked block that
+        wins over any Android binding of the same hash. Re-run it after changing that pack.
 """
 
 import argparse
@@ -417,9 +422,93 @@ def cmd_dds(args):
     print('converted %d of %d PNGs to DDS' % (converted, len(pngs)))
 
 
+# --- merge ---
+
+def _read_pack_hashes(ini_path):
+    """The [hashes] entries of another pack, in order: [(key, value)], comments dropped."""
+    out = []
+    section = ''
+    for line in open(ini_path, encoding='utf-8', errors='replace').read().splitlines():
+        t = line.strip()
+        if t.startswith('['):
+            section = t.lower()
+        elif section == '[hashes]' and '=' in t and not t.startswith('#'):
+            k, v = t.split('=', 1)
+            out.append((k.strip().lower(), v.strip()))
+    return out
+
+
+def cmd_merge(args):
+    """Bring a hand-made pack (the HD UI/HUD pack) into this one: its files are copied in beside
+    android/, its hashes go in as one marked block at the top of [hashes], and any Android binding
+    of the same hash is dropped - the hand-made art wins. Re-running replaces the block, so an
+    updated source pack is merged again the same way."""
+    src = os.path.abspath(args.source)
+    src_ini = os.path.join(src, 'textures.ini')
+    if not os.path.exists(src_ini):
+        sys.exit('no textures.ini in %s' % src)
+    entries = _read_pack_hashes(src_ini)
+    keys = {k for k, _ in entries}
+
+    copied = 0
+    missing = []
+    for _k, rel in entries:
+        if not rel:
+            continue
+        a = os.path.join(src, rel)
+        b = os.path.join(args.pack, rel)
+        if not os.path.exists(a):
+            missing.append(rel)
+            continue
+        os.makedirs(os.path.dirname(b), exist_ok=True)
+        if not os.path.exists(b) or os.path.getmtime(a) > os.path.getmtime(b) or os.path.getsize(a) != os.path.getsize(b):
+            shutil.copy2(a, b)
+            copied += 1
+
+    ini = os.path.join(args.pack, 'textures.ini')
+    if not os.path.exists(ini):
+        with open(ini, 'w', encoding='utf-8') as f:
+            f.write(DEFAULT_INI_HEAD)
+    name = os.path.basename(src.rstrip('/\\'))
+    begin, end = '# --- begin %s ---' % name, '# --- end %s ---' % name
+    lines = open(ini, encoding='utf-8').read().splitlines()
+    out = []
+    inside = False
+    dropped = 0
+    section = ''
+    for line in lines:
+        t = line.strip()
+        if t == begin:
+            inside = True
+            continue
+        if t == end:
+            inside = False
+            continue
+        if inside:
+            continue
+        if t.startswith('['):
+            section = t.lower()
+        if (section == '[hashes]' and '=' in t and not t.startswith('#')
+                and t.split('=', 1)[0].strip().lower() in keys):
+            dropped += 1        # an Android binding of a hash the hand-made pack covers
+            continue
+        out.append(line)
+    block = [begin, '# Hand-made art from %s, merged by Tools/lcshd.py merge. Wins over the Android bindings.' % name]
+    block += ['%s = %s' % (k, v) for k, v in entries]
+    block.append(end)
+    at = next(i for i, l in enumerate(out) if l.strip().lower() == '[hashes]') + 1
+    out[at:at] = block
+    with open(ini, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(out) + '\n')
+    print('merged %d hashes from %s (%d files copied, %d Android bindings of the same hashes dropped)'
+          % (len(entries), name, copied, dropped))
+    if missing:
+        print('missing in the source pack: %s' % ', '.join(missing))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('command', choices=['index', 'match', 'review', 'bind', 'dds'])
+    ap.add_argument('command', choices=['index', 'match', 'review', 'bind', 'dds', 'merge'])
     ap.add_argument('--work', default=DEFAULT_WORK)
     ap.add_argument('--obb', default=DEFAULT_OBB)
     ap.add_argument('--patch', default=DEFAULT_PATCH)
@@ -427,8 +516,11 @@ def main():
     ap.add_argument('--pack', help="PPSSPP's TEXTURES/ULUS10041")
     ap.add_argument('--tier', default='sure', choices=[t[0] for t in TIERS] + ['review'])
     ap.add_argument('--sample', type=int, default=48)
+    ap.add_argument('--from', dest='source', default=os.path.join(WORKSPACE, 'texturereplacements'),
+                    help='merge: the hand-made pack to bring in (default: the HD UI pack)')
     args = ap.parse_args()
-    {'index': cmd_index, 'match': cmd_match, 'review': cmd_review, 'bind': cmd_bind, 'dds': cmd_dds}[args.command](args)
+    {'index': cmd_index, 'match': cmd_match, 'review': cmd_review, 'bind': cmd_bind, 'dds': cmd_dds,
+     'merge': cmd_merge}[args.command](args)
 
 
 if __name__ == '__main__':
