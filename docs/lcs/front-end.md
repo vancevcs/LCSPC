@@ -44,7 +44,7 @@ its table row a variable and an ini key.
 | display | brightness (the game's), resolution, fullscreen, show FPS (PPSSPP's), frame limiter (`FrameRate60`) | widescreen |
 | advanced | texture quality, anisotropic filtering (PPSSPP's), anti-aliasing, world memory | shadows, ambient occlusion, water |
 | gameplay | auto-save, language (next boot), subtitles, HUD, radar (the game's) | GPS route |
-| key bindings | the cards: on foot, in vehicle, menus, built from `kKeyMappings` (`LCS::KeyListing`) | rebinding, RESET KEYS |
+| key bindings | the cards: on foot, in vehicle, menus, built from `kKeyMappings` (`LCS::KeyListing`); any line rebound by clicking it; RESET KEYS | |
 | cheats | all 35 rows | |
 
 Move-while-aiming and direct weapon selection, which VCS has rows for, are left out on purpose.
@@ -168,6 +168,13 @@ Language is the PSP system language the game asks for at boot (`0x089c0e28`), so
 game its choice there (`sceUtilityGetSystemParamInt`) and takes effect at the next boot.
 
 Show FPS is PPSSPP's own counter bit; the row reads it back each time the page is built.
+
+## Key bindings
+
+Enter on a line of a key card, or a click, and its keyboard cell says PRESS A KEY; the next key
+pressed is that line's (a line of several keys, WASD, asks once per direction). Escape cancels; the
+wheel isn't taken. input.md "Rebinding" has the rules. RESET KEYS puts every context back. Measured:
+on-foot Jump onto K made K the game's Square and Space nothing; then onto F, and Enter Vehicle took K.
 
 ## The cheats
 

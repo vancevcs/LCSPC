@@ -32,6 +32,8 @@
 // mutex). InputTick runs on the emu thread from LCS::Tick and is the only thing that touches
 // sceCtrl or PSP memory. Only buttons this layer pressed are ever released.
 
+class Section;
+
 namespace LCS {
 
 struct LCSState;
@@ -88,14 +90,36 @@ bool MouseLookEngaged();
 // end drops them as it closes. UI thread.
 void DropPendingMouse();
 
+// One key of a card line, as bound: the action's shipped key (its name in kKeyMappings and
+// lcs.ini) and the key that does it now. `what` names it within its line ("forward"), or null.
+struct KeyBindPart {
+	InputKeyCode shipped;
+	InputKeyCode bound;
+	const char *what;
+};
+
 // One line of the front end's controls card: an action, the keys and mouse buttons that do it in
 // one context, and the PSP button(s) they press. Built from kKeyMappings and the stick keys, so it
-// cannot disagree with what the keys do. Read-only for now: the card has no rebinding yet.
+// cannot disagree with what the keys do. `parts` are the keys that can be rebound, in order; a line
+// without any (the mouse) is a fact, not a setting.
 struct KeyListingRow {
 	std::string action;
 	std::vector<std::string> keys;
 	std::string psp;
+	std::vector<KeyBindPart> parts;
 };
 std::vector<KeyListingRow> KeyListing(InputContext context);
+
+// Rebinding, per context: an action is named by its shipped key, and BoundKey is what does it now.
+// A clash swaps the two actions' keys. Escape can't be bound (it is the pause and the cancel).
+// lcs.ini [KeyBindings] keeps only what moved. UI thread and emu thread alike (under the mutex).
+InputKeyCode BoundKey(InputContext context, InputKeyCode shipped);
+void BindKey(InputContext context, InputKeyCode shipped, InputKeyCode key);
+void ResetKeyBindings();
+bool HasKeyBindings();
+void LoadKeyBindings(const Section *section);
+void SaveKeyBindings(Section *section);
+// A key as the card names it ("LMB", "LEFT SHIFT", "F").
+std::string CardKeyName(InputKeyCode key);
 
 }  // namespace LCS

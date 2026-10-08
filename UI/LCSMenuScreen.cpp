@@ -119,7 +119,7 @@ static const uint32_t kListHeaderColor = COLOR(0xFDB336);  // the game's tab ora
 static const uint32_t kListRuleColor = 0x40FFFFFF;
 
 // Lines for the bottom bar that are true of a whole page rather than of the selected row.
-static const char *const kBindingsNote = "Rebinding keys from here comes later. These are the keys as they are.";
+static const char *const kBindingsNote = "Enter or click a line to give it another key. A key another line has is swapped.";
 static const char *const kCheatNote = "Save first - some cheats cannot be turned off again.";
 static const char *const kPlaceholderPrefix = "Coming later. ";
 
@@ -513,7 +513,7 @@ void LCSMenuItem::Draw(UIContext &dc) {
 // --- A line of the controls card ---
 
 LCSBindingRow::LCSBindingRow(const LCS::KeyListingRow &row, UI::LayoutParams *layoutParams)
-	: UI::ClickableItem(layoutParams), name_(row.action) {
+	: UI::ClickableItem(layoutParams), name_(row.action), bindable_(!row.parts.empty()) {
 	std::string keys;
 	for (const std::string &key : row.keys) {
 		if (!keys.empty()) {
@@ -541,11 +541,32 @@ bool LCSBindingRow::Touch(const TouchInput &input) {
 	if ((input.flags & TouchInputFlags::MOVE) && input.buttons == 0 && contains && !HasFocus()) {
 		UI::SetFocusedView(this, UI::FocusFlags::CAUSE_OTHER);
 	}
-	if ((input.flags & TouchInputFlags::DOWN) && contains) {
-		UI::SetFocusedView(this, UI::FocusFlags::CAUSE_FORCED, true);
+	if ((input.flags & TouchInputFlags::MOUSE) && (input.buttons & 1) == 0 && !(input.flags & TouchInputFlags::UP)) {
+		return contains;
 	}
-	// A reference card: a click does nothing rather than something surprising.
+	// A click on the line asks for its key; forced focus first, for the reason LCSMenuItem's is.
+	if (input.flags & TouchInputFlags::DOWN) {
+		if (contains) {
+			UI::SetFocusedView(this, UI::FocusFlags::CAUSE_FORCED, true);
+		}
+		down_ = contains;
+	}
+	if (input.flags & TouchInputFlags::UP) {
+		if ((input.flags & TouchInputFlags::CANCEL) == 0 && down_ && contains) {
+			ClickInternal();
+		}
+		down_ = false;
+	}
 	return contains;
+}
+
+void LCSBindingRow::ClickInternal() {
+	// The mouse line is a fact about the game, not a setting: nothing to ask for.
+	if (!bindable_) {
+		return;
+	}
+	PlayMenuSound(UI::UISound::LCS_SELECT);
+	UI::ClickableItem::ClickInternal();
 }
 
 std::string LCSBindingRow::DescribeText() const {
@@ -562,15 +583,18 @@ std::string LCSBindingRow::DescribeText() const {
 }
 
 void LCSBindingRow::Draw(UIContext &dc) {
-	if (HasFocus()) {
+	if (HasFocus() || capturing_) {
 		const float inset = g_display.dp_xres * kListPanelInsetFrac;
 		dc.FillRect(UI::Drawable(kListRowColor), Bounds(inset, bounds_.y, g_display.dp_xres - inset * 2.0f, bounds_.h));
 	}
 	dc.SetFontStyle(kListFont);
 	dc.DrawTextShadow(name_, g_display.dp_xres * kListNameFrac, bounds_.centerY(), kListNameColor, ALIGN_VCENTER | ALIGN_LEFT);
 	for (size_t i = 0; i < cells_.size() && i < ARRAY_SIZE(kListDeviceFrac); i++) {
-		if (!cells_[i].empty()) {
-			dc.DrawTextShadow(cells_[i], g_display.dp_xres * kListDeviceFrac[i], bounds_.centerY(), kListKeyColor, ALIGN_VCENTER | ALIGN_LEFT);
+		// The keyboard cell asks while the line is waiting for a key.
+		const std::string &cell = i == 0 && capturing_ ? captureText_ : cells_[i];
+		if (!cell.empty()) {
+			dc.DrawTextShadow(cell, g_display.dp_xres * kListDeviceFrac[i], bounds_.centerY(),
+				i == 0 && capturing_ ? kItemSelectedColor : kListKeyColor, ALIGN_VCENTER | ALIGN_LEFT);
 		}
 	}
 }
@@ -797,7 +821,66 @@ void LCSMenuScreen::GoToConfirm(const char *title, std::string question, std::st
 	GoToPage(LCSMenuPage::Confirm);
 }
 
+// A line of a key card is waiting for a key: the next one pressed is it, Escape cancels. A line of
+// several keys (WASD) asks once per key. The card is rebuilt in update(), not here.
+void LCSMenuScreen::StartCapture(int line) {
+	if (line < 0 || line >= (int)listing_.size() || listing_[line].parts.empty()) {
+		return;
+	}
+	captureLine_ = line;
+	capturePart_ = 0;
+	ShowCapture();
+}
+
+void LCSMenuScreen::ShowCapture() {
+	for (size_t i = 0; i < bindingRows_.size(); i++) {
+		const bool on = (int)i == captureLine_;
+		std::string text;
+		if (on) {
+			const LCS::KeyBindPart &part = listing_[captureLine_].parts[capturePart_];
+			text = part.what ? std::string("PRESS A KEY - ") + part.what : std::string("PRESS A KEY");
+			for (char &c : text) {
+				c = (char)toupper((unsigned char)c);
+			}
+		}
+		bindingRows_[i]->SetCapturing(on, text);
+	}
+}
+
+bool LCSMenuScreen::CaptureKey(const KeyInput &key) {
+	if (captureLine_ < 0 || !(key.flags & KeyInputFlags::DOWN) || (key.flags & KeyInputFlags::IS_REPEAT)) {
+		return false;
+	}
+	if (key.deviceId != DEVICE_ID_KEYBOARD && key.deviceId != DEVICE_ID_MOUSE) {
+		return true;
+	}
+	// Escape is the pause and the cancel; the wheel is one notch, not a key held.
+	if (key.keyCode == NKCODE_ESCAPE || key.keyCode == NKCODE_BACK) {
+		PlayMenuSound(UI::UISound::LCS_BACK);
+		captureLine_ = -1;
+		ShowCapture();
+		return true;
+	}
+	if (key.keyCode == NKCODE_EXT_MOUSEWHEEL_UP || key.keyCode == NKCODE_EXT_MOUSEWHEEL_DOWN) {
+		return true;
+	}
+	const LCS::KeyBindPart part = listing_[captureLine_].parts[capturePart_];
+	LCS::BindKey(ToKeyContext(page_), part.shipped, key.keyCode);
+	PlayMenuSound(UI::UISound::LCS_SELECT);
+	if (++capturePart_ < (int)listing_[captureLine_].parts.size()) {
+		ShowCapture();
+		return true;
+	}
+	bindingFocus_ = captureLine_;
+	captureLine_ = -1;
+	pendingRebuild_ = true;
+	return true;
+}
+
 bool LCSMenuScreen::key(const KeyInput &key) {
+	if (CaptureKey(key)) {
+		return true;
+	}
 	if ((key.flags & KeyInputFlags::DOWN) && !(key.flags & KeyInputFlags::IS_REPEAT)) {
 		// PPSSPP's own pause screen (savestates, its settings), for working on the fork. The root
 		// page's bar says so.
@@ -926,13 +1009,19 @@ void LCSMenuScreen::AddSaveRows(UI::ViewGroup *parent, bool deleting) {
 }
 
 void LCSMenuScreen::AddBindingRows(UI::ViewGroup *parent, LCSMenuPage page) {
-	const std::vector<LCS::KeyListingRow> listing = LCS::KeyListing(ToKeyContext(page));
+	listing_ = LCS::KeyListing(ToKeyContext(page));
+	const std::vector<LCS::KeyListingRow> &listing = listing_;
 	listRowCount_ = (int)listing.size();
 	// Rows give up height to keep the whole card on the screen; there is no scrolling here.
 	const float available = g_display.dp_yres - kBottomBarHeight - kListTop - kListHeaderHeight - kListPadding * 4.0f - kRowHeight;
 	listRowHeight_ = listRowCount_ > 0 ? std::clamp(available / (float)listRowCount_, kListRowMinHeight, kListRowHeight) : kListRowHeight;
 	for (const LCS::KeyListingRow &row : listing) {
-		bindingRows_.push_back(parent->Add(new LCSBindingRow(row, new UI::LinearLayoutParams(UI::FILL_PARENT, listRowHeight_))));
+		LCSBindingRow *line = parent->Add(new LCSBindingRow(row, new UI::LinearLayoutParams(UI::FILL_PARENT, listRowHeight_)));
+		const int index = (int)bindingRows_.size();
+		line->OnClick.Add([this, index](UI::EventParams &e) {
+			StartCapture(index);
+		});
+		bindingRows_.push_back(line);
 	}
 	parent->Add(new UI::Spacer(0.0f, new UI::LinearLayoutParams(UI::FILL_PARENT, kListPadding * 2.0f)));
 	AddBackRow(parent);
@@ -990,6 +1079,7 @@ void LCSMenuScreen::CreateViews() {
 
 	rows_.clear();
 	bindingRows_.clear();
+	captureLine_ = -1;
 	listRowCount_ = 0;
 	listRowHeight_ = kListRowHeight;
 
@@ -1037,7 +1127,10 @@ void LCSMenuScreen::CreateViews() {
 		AddPageRow(list, "IN VEHICLE", LCSMenuPage::KeysVehicle);
 		AddPageRow(list, "MENUS", LCSMenuPage::KeysMenu);
 		AddGap(list);
-		AddPlaceholderRow(list, "RESET KEYS", "Put every key back where it started.");
+		AddRow(list, "RESET KEYS", "Put every key back where it started.")->OnClick.Add([this](UI::EventParams &e) {
+			LCS::ResetKeyBindings();
+			g_OSD.Show(OSDType::MESSAGE_SUCCESS, "Every key is back where it started", 2.5f, "lcs_menu");
+		});
 		AddBackRow(list);
 		break;
 	case LCSMenuPage::Game:
@@ -1099,7 +1192,9 @@ void LCSMenuScreen::CreateViews() {
 	// A card has no menu rows above its lines, so its first line takes focus; otherwise the row
 	// this page was left on, or the first, which on a question is NO.
 	if (!bindingRows_.empty()) {
-		UI::SetFocusedView(bindingRows_[0], UI::FocusFlags::CAUSE_SCREEN_CHANGE);
+		const int line = bindingFocus_ >= 0 && bindingFocus_ < (int)bindingRows_.size() ? bindingFocus_ : 0;
+		bindingFocus_ = -1;
+		UI::SetFocusedView(bindingRows_[line], UI::FocusFlags::CAUSE_SCREEN_CHANGE);
 	} else if (!rows_.empty()) {
 		auto it = lastFocus_.find(page_);
 		int index = it != lastFocus_.end() && it->second < (int)rows_.size() ? it->second : 0;
@@ -1142,6 +1237,11 @@ void LCSMenuScreen::update() {
 		pendingNewGame_ = false;
 		LCS::RequestNewGame();
 		TriggerFinish(DR_CANCEL);
+		return;
+	}
+	if (pendingRebuild_) {
+		pendingRebuild_ = false;
+		RecreateViews();
 		return;
 	}
 	if (pendingDelete_ >= 0) {
@@ -1219,7 +1319,9 @@ void LCSMenuScreen::DrawBackground(UIContext &dc) {
 	dc.SetFontStyle(dc.GetTheme().uiFontSmall);
 	// A page-wide note outranks the selected row's help: it is true of everything on the page.
 	std::string note;
-	if (IsKeyListPage(page_)) {
+	if (captureLine_ >= 0) {
+		note = "Press the key for " + listing_[captureLine_].action + ". Escape cancels.";
+	} else if (IsKeyListPage(page_)) {
 		note = kBindingsNote;
 	} else if (page_ == LCSMenuPage::Cheats) {
 		note = kCheatNote;
@@ -1233,8 +1335,10 @@ void LCSMenuScreen::DrawBackground(UIContext &dc) {
 	const char *hint = "ENTER / LMB - SELECT     ESC - BACK";
 	if (page_ == LCSMenuPage::Root) {
 		hint = "ENTER / LMB - SELECT     ESC - RESUME     F1 - PPSSPP MENU";
+	} else if (captureLine_ >= 0) {
+		hint = "ESC - CANCEL";
 	} else if (IsKeyListPage(page_)) {
-		hint = "ESC - BACK";
+		hint = "ENTER / LMB - CHANGE KEY     ESC - BACK";
 	} else if (focused && focused->option() && !focused->IsPlaceholder()) {
 		hint = focused->option()->type == LCS::OptionType::Bool
 			? "ENTER / LMB - TOGGLE     ESC - BACK"

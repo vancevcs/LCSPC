@@ -30,6 +30,7 @@
 #include "Core/ELF/ParamSFO.h"
 #include "Core/System.h"
 #include "Core/LCS/LCSChaseCam.h"
+#include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSSettings.h"
 
 namespace LCS {
@@ -442,6 +443,8 @@ void LoadSettings() {
 		g_settings.invertAimY = g_settings.invertMouseY;
 	}
 	RefreshOptionProxies();
+	// The keys the player moved (the front end's key cards).
+	LoadKeyBindings(ini.GetSection("KeyBindings"));
 	NOTICE_LOG(Log::System, "LCS: settings loaded (FrameRate60 = %s, KeyboardMouse = %s, MouseLook = %s, MouseSensitivity = %g, VehicleChaseCamera = %s, FootChaseCamera = %s)",
 		g_settings.frameRate60 ? "true" : "false", g_settings.keyboardMouse ? "true" : "false",
 		g_settings.mouseLook ? "true" : "false", g_settings.mouseSensitivity,
@@ -489,6 +492,7 @@ void SaveSettings() {
 		case OptionType::Choice: section->Set(opt.iniKey, *opt.intValue); break;
 		}
 	}
+	SaveKeyBindings(ini.GetOrCreateSection("KeyBindings"));
 	if (!ini.Save(SettingsPath())) {
 		ERROR_LOG(Log::System, "LCS: could not write %s", SettingsPath().c_str());
 	}

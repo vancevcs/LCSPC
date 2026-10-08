@@ -33,13 +33,12 @@
 #include "Common/File/Path.h"
 #include "Common/UI/UIScreen.h"
 #include "Common/UI/View.h"
+#include "Core/LCS/LCSInput.h"
 #include "UI/BaseScreens.h"
 
 namespace LCS {
 struct Option;
-struct KeyListingRow;
 enum class OptionPage;
-enum class InputContext;
 enum class GamePage;
 }
 
@@ -116,7 +115,7 @@ private:
 	mutable bool hitBoundsValid_ = false;
 };
 
-// One line of a controls card: an action, its keys, its PSP button. A reference card for now.
+// One line of a controls card: an action, its keys, its PSP button. A click asks for a new key.
 class LCSBindingRow : public UI::ClickableItem {
 public:
 	explicit LCSBindingRow(const LCS::KeyListingRow &row, UI::LayoutParams *layoutParams = nullptr);
@@ -126,10 +125,18 @@ public:
 	bool Touch(const TouchInput &input) override;
 	void FocusChanged(UI::FocusFlags focusFlags) override;
 	std::string DescribeText() const override;
+	// Waiting for a key: the keyboard cell shows `text` instead of the keys.
+	void SetCapturing(bool capturing, const std::string &text) { capturing_ = capturing; captureText_ = text; }
+
+protected:
+	void ClickInternal() override;
 
 private:
 	std::string name_;
 	std::vector<std::string> cells_;
+	bool bindable_ = false;
+	bool capturing_ = false;
+	std::string captureText_;
 };
 
 class LCSMenuScreen : public UIBaseDialogScreen {
@@ -177,6 +184,9 @@ private:
 	void AddBindingRows(UI::ViewGroup *parent, LCSMenuPage page);
 	void AddCheatRows(UI::ViewGroup *parent, LCSMenuPage page);
 	void FitRows(UI::LinearLayout *list);
+	void StartCapture(int line);
+	void ShowCapture();
+	bool CaptureKey(const KeyInput &key);
 	Bounds ListPanel() const;
 
 	void OnResume(UI::EventParams &e);
@@ -203,6 +213,12 @@ private:
 
 	std::vector<LCSMenuItem *> rows_;
 	std::vector<LCSBindingRow *> bindingRows_;
+	// The key card on screen, and the line (and the key within it) waiting for a key, or -1.
+	std::vector<LCS::KeyListingRow> listing_;
+	int captureLine_ = -1;
+	int capturePart_ = 0;
+	int bindingFocus_ = -1;
+	bool pendingRebuild_ = false;
 	// The row each page was left on, so Back lands where you came from rather than at the top.
 	std::map<LCSMenuPage, int> lastFocus_;
 	int listRowCount_ = 0;

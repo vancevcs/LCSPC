@@ -78,6 +78,24 @@ Escape, F-keys and everything not in the table stay PPSSPP's.
   movement key is held and centred once when the last is released.
 - **The wheel** becomes a 4-vblank d-pad press with a 2-vblank gap per notch, queued.
 
+## Rebinding
+
+The key cards (front-end.md "Key bindings") rebind per context: an action is named by its shipped key
+in `kKeyMappings` or `kStickKeys`, and `BoundKey(context, shipped)` is what does it now. A press is
+translated once, in `HandleHostKey`, into the shipped key it stands for (`HeldKey::as`), and
+everything after that - the table, the stick, the drive-by keys, the aim key - asks about that key,
+so none of it changed. Three rules, the VCS fork's:
+
+- **A clash swaps.** Binding Jump to F hands Enter Vehicle Jump's old key: an action left with no
+  key is something the game can no longer do.
+- **A key an action moved off stays claimed** and presses nothing, so it doesn't fall through to
+  PPSSPP's own mapping of it (Space is the PSP's Start there).
+- **Escape can't be bound**: it is the pause and the capture's cancel.
+
+`lcs.ini` keeps what moved under `[KeyBindings]`, `<context>.<shipped key code> = <key code>`
+(NKCODE numbers, `OnFoot.62 = 39` is Jump on K). A key held across a context change keeps the meaning
+it had when it went down. The game's tutorial lines name PSP buttons either way ("Not done").
+
 ## The drive-by on Q and E
 
 The game turns the gun out of the window only with L or R held **and** the stick pushed to that

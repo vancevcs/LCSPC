@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "Common/Common.h"
+#include "Common/Data/Format/IniFile.h"
 #include "Common/Log.h"
 #include "Common/StringUtils.h"
 #include "Common/System/Request.h"
@@ -140,7 +141,14 @@ struct HeldKey {
 	InputContext context;   // where it was pressed
 	bool claimed;           // whether its press was kept from PPSSPP's mapper
 	bool silent = false;    // claimed, and spent on something else: it presses nothing while held
+	// The key it stands for: the shipped key of the action it is bound to in `context`. Everything
+	// downstream (the table, the stick, the drive-by, the aim key) asks about this one.
+	InputKeyCode as = NKCODE_UNKNOWN;
 };
+
+// Rebinding (the front end's key cards): per context, the shipped keys whose action the player moved
+// to another key. A key not in here does what the table says. Under g_mutex.
+static std::map<std::pair<int, int>, InputKeyCode> g_bindings;
 static std::mutex g_mutex;
 static std::map<InputKeyCode, HeldKey> g_held;
 static float g_mouseDX = 0.0f;
@@ -206,6 +214,25 @@ static bool ContextClaims(InputContext context, InputKeyCode key) {
 // A key pressed in one context still acts after a change between on foot and a vehicle (W held
 // while getting in drives off), but never across the menu: Enter opens it as Start and must not
 // then select the first entry as Cross.
+// What a key pressed in `context` stands for, under g_mutex. The shipped key whose action was bound
+// to it; or, if an action of this context moved off it, nothing (it stays claimed and presses nothing:
+// the VCS fork's rule, so the old key doesn't fall through to PPSSPP's own mapping of it - Space is
+// the PSP's Start there); or itself.
+static bool TranslateKeyLocked(InputContext context, InputKeyCode physical, InputKeyCode *as) {
+	for (const auto &[from, to] : g_bindings) {
+		if (from.first == (int)context && to == physical) {
+			*as = (InputKeyCode)from.second;
+			return true;
+		}
+	}
+	if (g_bindings.count({ (int)context, (int)physical })) {
+		*as = NKCODE_UNKNOWN;
+		return false;
+	}
+	*as = physical;
+	return true;
+}
+
 static bool KeyLive(const HeldKey &held, InputContext now) {
 	if (!held.claimed || held.silent) {
 		return false;
@@ -252,15 +279,20 @@ bool HandleHostKey(const KeyInput &key) {
 		if (context == InputContext::Unknown) {
 			return false;
 		}
-		// Backspace on a page this fork opened is Back to this fork's menu, the way Escape is. As
-		// the game's Circle it would lift the focus to the tab strip, which is hidden on purpose.
-		if (context == kMenu && key.keyCode == NKCODE_DEL && BridgeOwnsMenu()) {
-			g_held[key.keyCode] = HeldKey{ context, true, true };
+		InputKeyCode as;
+		if (!TranslateKeyLocked(context, key.keyCode, &as)) {
+			g_held[key.keyCode] = HeldKey{ context, true, true, NKCODE_UNKNOWN };
+			return true;
+		}
+		// Back (Backspace as shipped) on a page this fork opened is Back to this fork's menu, the way
+		// Escape is. As the game's Circle it would lift the focus to the tab strip, hidden on purpose.
+		if (context == kMenu && as == NKCODE_DEL && BridgeOwnsMenu()) {
+			g_held[key.keyCode] = HeldKey{ context, true, true, as };
 			System_PostUIMessage(UIMessage::REQUEST_GAME_PAUSE);
 			return true;
 		}
-		const bool claimed = ContextClaims(context, key.keyCode);
-		g_held[key.keyCode] = HeldKey{ context, claimed };
+		const bool claimed = ContextClaims(context, as);
+		g_held[key.keyCode] = HeldKey{ context, claimed, false, as };
 		return claimed;
 	}
 	// A release goes wherever its press went, so neither side is left with a key down forever.
@@ -312,7 +344,7 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 				continue;
 			}
 			for (const KeyMapping &mapping : kKeyMappings) {
-				if (mapping.context == context && mapping.key == key) {
+				if (mapping.context == context && mapping.key == h.as) {
 					mask |= mapping.psp;
 				}
 			}
@@ -324,7 +356,7 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 	bool aimKey = false;
 	if (context == kFoot && (mask & CTRL_LTRIGGER) == 0) {
 		for (const auto &[key, h] : held) {
-			if (key == NKCODE_EXT_MOUSEBUTTON_2 && KeyLive(h, context)) {
+			if (h.as == NKCODE_EXT_MOUSEBUTTON_2 && KeyLive(h, context)) {
 				aimKey = true;
 			}
 		}
@@ -395,14 +427,14 @@ static void ApplyStick(InputContext context, const std::vector<std::pair<InputKe
 			continue;
 		}
 		for (const StickKey &stick : kStickKeys) {
-			if (stick.context == context && stick.key == key) {
+			if (stick.context == context && stick.key == h.as) {
 				x += stick.x;
 				y += stick.y;
 			}
 		}
 		if (context == kCar) {
 			for (const DriveByKey &look : kDriveByKeys) {
-				if (look.key == key) {
+				if (look.key == h.as) {
 					driveByX += look.x;
 				}
 			}
@@ -697,7 +729,7 @@ void DropPendingMouse() {
 
 // What the card calls a key: the names a PC game's controls screen uses, PPSSPP's own where those
 // would do ("LShift" would not).
-static std::string CardKeyName(InputKeyCode key) {
+std::string CardKeyName(InputKeyCode key) {
 	switch (key) {
 	case NKCODE_EXT_MOUSEBUTTON_1: return "LMB";
 	case NKCODE_EXT_MOUSEBUTTON_2: return "RMB";
@@ -733,15 +765,125 @@ static std::string CardPspName(u32 mask) {
 	return out;
 }
 
+static InputKeyCode BoundKeyLocked(InputContext context, InputKeyCode shipped) {
+	auto it = g_bindings.find({ (int)context, (int)shipped });
+	return it != g_bindings.end() ? it->second : shipped;
+}
+
+InputKeyCode BoundKey(InputContext context, InputKeyCode shipped) {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	return BoundKeyLocked(context, shipped);
+}
+
+// Binds `key` to the action whose shipped key is `shipped`. A key another action of the context has
+// is swapped rather than taken: that action gets this one's old key, because an action left with no
+// key is something the game can no longer do.
+void BindKey(InputContext context, InputKeyCode shipped, InputKeyCode key) {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	const InputKeyCode old = BoundKeyLocked(context, shipped);
+	if (old == key) {
+		return;
+	}
+	// Who has `key` now: an action bound to it, or the action shipped on it (if not moved off).
+	InputKeyCode other = NKCODE_UNKNOWN;
+	for (const auto &[from, to] : g_bindings) {
+		if (from.first == (int)context && to == key) {
+			other = (InputKeyCode)from.second;
+		}
+	}
+	if (other == NKCODE_UNKNOWN && ContextClaims(context, key) && !g_bindings.count({ (int)context, (int)key })) {
+		other = key;
+	}
+	auto set = [&](InputKeyCode action, InputKeyCode to) {
+		if (action == to) {
+			g_bindings.erase({ (int)context, (int)action });
+		} else {
+			g_bindings[{ (int)context, (int)action }] = to;
+		}
+	};
+	set(shipped, key);
+	if (other != NKCODE_UNKNOWN && other != shipped) {
+		set(other, old);
+	}
+	NOTICE_LOG(Log::System, "LCS input: %s: %s -> %s%s", InputContextName(context), CardKeyName(shipped).c_str(),
+		CardKeyName(key).c_str(), other != NKCODE_UNKNOWN && other != shipped ? " (swapped)" : "");
+}
+
+void ResetKeyBindings() {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	g_bindings.clear();
+}
+
+bool HasKeyBindings() {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	return !g_bindings.empty();
+}
+
+// lcs.ini [KeyBindings]: "<context>.<shipped key code> = <key code>", only for what moved.
+static const char *const kContextIniNames[] = { "None", "OnFoot", "InVehicle", "Menu" };
+
+void LoadKeyBindings(const Section *section) {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	g_bindings.clear();
+	if (!section) {
+		return;
+	}
+	for (int c = 1; c < (int)ARRAY_SIZE(kContextIniNames); c++) {
+		for (const KeyMapping &m : kKeyMappings) {
+			char name[48];
+			snprintf(name, sizeof(name), "%s.%d", kContextIniNames[c], (int)m.key);
+			int to = 0;
+			if ((int)m.context == c && section->Get(name, &to) && to > 0 && to != NKCODE_ESCAPE) {
+				g_bindings[{ c, (int)m.key }] = (InputKeyCode)to;
+			}
+		}
+		for (const StickKey &st : kStickKeys) {
+			char name[48];
+			snprintf(name, sizeof(name), "%s.%d", kContextIniNames[c], (int)st.key);
+			int to = 0;
+			if ((int)st.context == c && section->Get(name, &to) && to > 0 && to != NKCODE_ESCAPE) {
+				g_bindings[{ c, (int)st.key }] = (InputKeyCode)to;
+			}
+		}
+	}
+}
+
+void SaveKeyBindings(Section *section) {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	section->Clear();
+	for (const auto &[from, to] : g_bindings) {
+		char name[48];
+		snprintf(name, sizeof(name), "%s.%d", kContextIniNames[from.first], from.second);
+		section->Set(name, (int)to);
+	}
+}
+
 std::vector<KeyListingRow> KeyListing(InputContext context) {
 	std::vector<KeyListingRow> rows;
+	std::lock_guard<std::mutex> guard(g_mutex);
+	auto part = [&](KeyListingRow &row, InputKeyCode shipped, const char *what) {
+		const InputKeyCode bound = BoundKeyLocked(context, shipped);
+		row.parts.push_back({ shipped, bound, what });
+		row.keys.push_back(CardKeyName(bound));
+	};
 	// The stick and the camera first, as a controls screen lists them; they are not in the table.
 	if (context == kFoot) {
-		rows.push_back({ "Walk", { "W A S D" }, "STICK" });
+		KeyListingRow walk{ "Walk", {}, "STICK" };
+		part(walk, NKCODE_W, "forward");
+		part(walk, NKCODE_S, "back");
+		part(walk, NKCODE_A, "left");
+		part(walk, NKCODE_D, "right");
+		rows.push_back(walk);
 		rows.push_back({ "Look", { "MOUSE" }, "" });
 	} else if (context == kCar) {
-		rows.push_back({ "Steer", { "A / D" }, "STICK" });
-		rows.push_back({ "Lean / aim the water cannon", { "UP ARROW", "DOWN ARROW" }, "STICK" });
+		KeyListingRow steer{ "Steer", {}, "STICK" };
+		part(steer, NKCODE_A, "left");
+		part(steer, NKCODE_D, "right");
+		rows.push_back(steer);
+		KeyListingRow lean{ "Lean / aim the water cannon", {}, "STICK" };
+		part(lean, NKCODE_DPAD_UP, "forward");
+		part(lean, NKCODE_DPAD_DOWN, "back");
+		rows.push_back(lean);
 		rows.push_back({ "Look around", { "MOUSE" }, "" });
 	}
 	for (size_t i = 0; i < kKeyMappingCount; i++) {
@@ -758,7 +900,13 @@ std::vector<KeyListingRow> KeyListing(InputContext context) {
 		} else if (it->psp.find(CardPspName(m.psp)) == std::string::npos) {
 			it->psp += " / " + CardPspName(m.psp);
 		}
-		it->keys.push_back(CardKeyName(m.key));
+		// The menu's Move row is four keys, one per direction: say which is being asked for.
+		const char *what = nullptr;
+		if (context == kMenu && m.psp == CTRL_UP) what = "up";
+		if (context == kMenu && m.psp == CTRL_DOWN) what = "down";
+		if (context == kMenu && m.psp == CTRL_LEFT) what = "left";
+		if (context == kMenu && m.psp == CTRL_RIGHT) what = "right";
+		part(*it, m.key, what);
 	}
 	// The wheel is one notch per press of the d-pad's left or right, which is the row above it.
 	if (context == kFoot || context == kCar) {
