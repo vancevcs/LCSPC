@@ -81,7 +81,7 @@ using namespace std::placeholders;
 #include "UI/BackgroundAudio.h"
 #include "UI/GamepadEmu.h"
 #include "UI/PauseScreen.h"
-#include "UI/LCSMenuScreen.h"  // Fork-specific: CreatePauseScreen
+#include "UI/LCSMenuScreen.h"  // Fork-specific: CreatePauseScreen, the LCS overlay
 #include "UI/LoadStateConfirmScreen.h"
 #include "UI/MainScreen.h"
 #include "UI/Background.h"
@@ -536,7 +536,8 @@ void EmuScreen::sendMessage(UIMessage message, const char *value) {
 	// External commands, like from the Windows UI.
 	// This happens on the main thread.
 	if (message == UIMessage::REQUEST_GAME_PAUSE && screenManager()->topScreen() == this) {
-		screenManager()->push(CreatePauseScreen(gamePath_, bootPending_));  // Fork-specific
+		if (UIScreen *pause = CreatePauseScreen(gamePath_, bootPending_))  // Fork-specific: may be taken
+			screenManager()->push(pause);
 	} else if (message == UIMessage::REQUEST_GAME_STOP) {
 		// We will push MainScreen in update().
 		if (bootPending_) {
@@ -665,7 +666,8 @@ void EmuScreen::sendMessage(UIMessage message, const char *value) {
 				// use this as the fallback way to get into the menu.
 				// Don't do it on the first resume though, in case we launch directly into emuscreen, like from a frontend - see #18926
 				if (!equals(value, "first")) {
-					screenManager()->push(CreatePauseScreen(gamePath_, bootPending_));  // Fork-specific
+					if (UIScreen *pause = CreatePauseScreen(gamePath_, bootPending_))  // Fork-specific
+						screenManager()->push(pause);
 				}
 			}
 		}
@@ -1335,6 +1337,7 @@ void EmuScreen::deviceLost() {
 		sleep_ms(100, "device-lost-during-boot");
 	}
 
+	ReleaseLCSOverlayArt();  // Fork-specific
 	UIScreen::deviceLost();
 }
 
@@ -1432,7 +1435,13 @@ void EmuScreen::update() {
 
 	if (pauseTrigger_) {
 		pauseTrigger_ = false;
-		screenManager()->push(CreatePauseScreen(gamePath_, bootPending_));  // Fork-specific
+		if (UIScreen *pause = CreatePauseScreen(gamePath_, bootPending_))  // Fork-specific: may be taken
+			screenManager()->push(pause);
+	}
+	// Fork-specific: Back from one of LCS's own pages comes back to the menu it was reached from.
+	if (LCSMenuDue() && screenManager()->topScreen() == this) {
+		if (UIScreen *pause = CreatePauseScreen(gamePath_, bootPending_))
+			screenManager()->push(pause);
 	}
 
 	if (!PSP_IsInited())
@@ -1822,6 +1831,9 @@ bool EmuScreen::hasVisibleUI() {
 	// Debug UI.
 	if ((DebugOverlay)g_Config.iDebugOverlay != DebugOverlay::OFF || g_Config.bShowDeveloperMenu)
 		return true;
+	// Fork-specific: the LCS front end's curtain and hint line.
+	if (LCSOverlayVisible())
+		return true;
 
 	// Exception information.
 	if (coreState == CORE_RUNTIME_ERROR || coreState == CORE_STEPPING_CPU) {
@@ -1852,6 +1864,7 @@ void EmuScreen::renderUI() {
 		if (g_Config.iShowStatusFlags) {
 			DrawFPS(ctx, GetLayoutBounds(*ctx));
 		}
+		DrawLCSOverlay(*ctx);  // Fork-specific: the LCS front end's curtain and hint line
 	}
 
 #ifdef USE_PROFILER

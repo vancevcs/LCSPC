@@ -102,6 +102,7 @@
 #include "Common/UI/PopupScreens.h"
 #include "Core/CmdLine.h"
 #include "Core/ControlMapper.h"
+#include "Core/LCS/LCSFrontEnd.h"
 #include "Core/LCS/LCSInput.h"
 #include "UI/LCSDevInput.h"
 #include "Core/Config.h"
@@ -1579,6 +1580,13 @@ bool NativeKey(const KeyInput &key) {
 
 	if (!g_screenManager) {
 		return false;
+	}
+
+	// Fork-specific: while the LCS front end's curtain is up, a sequence is walking the game's menu
+	// and a key pressed now would land in whichever page it has reached. Releases still go through,
+	// or a key held as it went up would stay down. Never up for any other game.
+	if (LCS::ActiveCurtain() != LCS::CurtainKind::None && !(key.flags & KeyInputFlags::UP)) {
+		return true;
 	}
 
 	// Filtering, detailed rules needed for good imgui behavior without having to ask the screen about what to do.

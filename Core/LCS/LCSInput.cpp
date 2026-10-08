@@ -28,11 +28,13 @@
 #include "Common/Common.h"
 #include "Common/Log.h"
 #include "Common/StringUtils.h"
+#include "Common/System/Request.h"
 #include "Core/HLE/sceCtrl.h"
 #include "Core/KeyMap.h"
 #include "Core/LCS/LCSAddresses.h"
 #include "Core/LCS/LCSChaseCam.h"
 #include "Core/LCS/LCSFreeAim.h"
+#include "Core/LCS/LCSFrontEnd.h"
 #include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSMemory.h"
 #include "Core/LCS/LCSSettings.h"
@@ -67,10 +69,10 @@ const KeyMapping kKeyMappings[] = {
 	{ kCar,  NKCODE_W,                 CTRL_CROSS,                     "Accelerate" },
 	{ kCar,  NKCODE_S,                 CTRL_SQUARE,                    "Brake / reverse" },
 	{ kCar,  NKCODE_SPACE,             CTRL_SQUARE | CTRL_CROSS,       "Handbrake" },
-	{ kCar,  NKCODE_EXT_MOUSEBUTTON_1, CTRL_CIRCLE,                    "Fire (drive-by with Q or E held)" },
-	{ kCar,  NKCODE_CTRL_LEFT,         CTRL_CIRCLE,                    "Fire (drive-by with Q or E held)" },
-	{ kCar,  NKCODE_Q,                 CTRL_LTRIGGER,                  "Look left" },
-	{ kCar,  NKCODE_E,                 CTRL_RTRIGGER,                  "Look right" },
+	{ kCar,  NKCODE_EXT_MOUSEBUTTON_1, CTRL_CIRCLE,                    "Fire (a drive-by with Q or E held)" },
+	{ kCar,  NKCODE_CTRL_LEFT,         CTRL_CIRCLE,                    "Fire (a drive-by with Q or E held)" },
+	{ kCar,  NKCODE_Q,                 CTRL_LTRIGGER,                  "Look left / drive-by left" },
+	{ kCar,  NKCODE_E,                 CTRL_RTRIGGER,                  "Look right / drive-by right" },
 	{ kCar,  NKCODE_C,                 CTRL_LTRIGGER | CTRL_RTRIGGER,  "Look behind" },
 	{ kCar,  NKCODE_H,                 CTRL_DOWN,                      "Horn" },
 	{ kCar,  NKCODE_R,                 CTRL_LEFT,                      "Previous radio station" },
@@ -90,6 +92,10 @@ const KeyMapping kKeyMappings[] = {
 	{ kMenu, NKCODE_ENTER,             CTRL_CROSS,                     "Select" },
 	{ kMenu, NKCODE_SPACE,             CTRL_CROSS,                     "Select" },
 	{ kMenu, NKCODE_DEL,               CTRL_CIRCLE,                    "Back" },
+	// The map's own controls, which its hint bar names: L / R zoom, Square the target marker.
+	{ kMenu, NKCODE_Q,                 CTRL_LTRIGGER,                  "Zoom out (map)" },
+	{ kMenu, NKCODE_E,                 CTRL_RTRIGGER,                  "Zoom in (map)" },
+	{ kMenu, NKCODE_F,                 CTRL_SQUARE,                    "Place / remove marker (map)" },
 };
 const size_t kKeyMappingCount = ARRAY_SIZE(kKeyMappings);
 
@@ -111,6 +117,19 @@ static const StickKey kStickKeys[] = {
 	{ kCar, NKCODE_DPAD_DOWN, 0.0f, -1.0f },
 };
 
+// The look keys in a vehicle also push the stick their way. The game only turns the gun out of the
+// window for a drive-by with L or R AND the stick to that side (reported: Q alone looked left, Q + A
+// aimed), so Q is Q + A and E is E + D, and fire is the only other key a drive-by needs. While one
+// of them is held it decides the stick's x on its own: Q with D held still aims left.
+struct DriveByKey {
+	InputKeyCode key;
+	float x;
+};
+static const DriveByKey kDriveByKeys[] = {
+	{ NKCODE_Q, -1.0f },
+	{ NKCODE_E, 1.0f },
+};
+
 // One notch of the wheel is a press of one d-pad direction: weapons on foot, stations in a car.
 static constexpr int kPulseHoldTicks = 4;   // vblanks; the game samples the pad once a frame
 static constexpr int kPulseGapTicks = 2;
@@ -120,6 +139,7 @@ static constexpr int kPulseGapTicks = 2;
 struct HeldKey {
 	InputContext context;   // where it was pressed
 	bool claimed;           // whether its press was kept from PPSSPP's mapper
+	bool silent = false;    // claimed, and spent on something else: it presses nothing while held
 };
 static std::mutex g_mutex;
 static std::map<InputKeyCode, HeldKey> g_held;
@@ -187,7 +207,7 @@ static bool ContextClaims(InputContext context, InputKeyCode key) {
 // while getting in drives off), but never across the menu: Enter opens it as Start and must not
 // then select the first entry as Cross.
 static bool KeyLive(const HeldKey &held, InputContext now) {
-	if (!held.claimed) {
+	if (!held.claimed || held.silent) {
 		return false;
 	}
 	return held.context == now || (held.context != kMenu && now != kMenu);
@@ -212,7 +232,7 @@ bool HandleHostKey(const KeyInput &key) {
 
 	std::lock_guard<std::mutex> guard(g_mutex);
 	if (key.keyCode == NKCODE_EXT_MOUSEWHEEL_UP || key.keyCode == NKCODE_EXT_MOUSEWHEEL_DOWN) {
-		if (context != kFoot && context != kCar) {
+		if (context != kFoot && context != kCar && context != kMenu) {
 			return false;
 		}
 		if (down) {
@@ -231,6 +251,13 @@ bool HandleHostKey(const KeyInput &key) {
 		// held later stays PPSSPP's, and its release finds nothing here and goes there too.
 		if (context == InputContext::Unknown) {
 			return false;
+		}
+		// Backspace on a page this fork opened is Back to this fork's menu, the way Escape is. As
+		// the game's Circle it would lift the focus to the tab strip, which is hidden on purpose.
+		if (context == kMenu && key.keyCode == NKCODE_DEL && BridgeOwnsMenu()) {
+			g_held[key.keyCode] = HeldKey{ context, true, true };
+			System_PostUIMessage(UIMessage::REQUEST_GAME_PAUSE);
+			return true;
 		}
 		const bool claimed = ContextClaims(context, key.keyCode);
 		g_held[key.keyCode] = HeldKey{ context, claimed };
@@ -276,7 +303,10 @@ static u32 PadPanelStep() {
 
 static void ApplyButtons(InputContext context, const std::vector<std::pair<InputKeyCode, HeldKey>> &held, int wheel) {
 	u32 mask = 0;
-	if (context != InputContext::Unknown) {
+	// While the front-end bridge walks the game's menu, the player's keys stand down: a held W is
+	// the d-pad's up, and a press between two of the bridge's is one it didn't make.
+	const bool bridge = FrontEndDriving();
+	if (context != InputContext::Unknown && !bridge) {
 		for (const auto &[key, h] : held) {
 			if (!KeyLive(h, context)) {
 				continue;
@@ -312,7 +342,7 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 		g_freeAimPulse--;
 	}
 
-	if (context == kFoot || context == kCar) {
+	if ((context == kFoot || context == kCar || context == kMenu) && !bridge) {
 		g_pendingWheel += wheel;
 	} else {
 		g_pendingWheel = 0;
@@ -325,12 +355,19 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 	} else if (g_pulseGap > 0) {
 		g_pulseGap--;
 	} else if (g_pendingWheel != 0) {
-		g_pulseButton = g_pendingWheel > 0 ? CTRL_RIGHT : CTRL_LEFT;
+		// In the game's menu a notch zooms the map (R in, L out); in play it is the d-pad's left
+		// and right, weapons on foot and stations in a vehicle.
+		if (context == kMenu) {
+			g_pulseButton = g_pendingWheel > 0 ? CTRL_RTRIGGER : CTRL_LTRIGGER;
+		} else {
+			g_pulseButton = g_pendingWheel > 0 ? CTRL_RIGHT : CTRL_LEFT;
+		}
 		g_pendingWheel += g_pendingWheel > 0 ? -1 : 1;
 		g_pulseTicks = kPulseHoldTicks;
 		mask |= g_pulseButton;
 	}
 	mask |= PadPanelStep();
+	mask |= FrontEndButtonMask();
 
 	// Release only what this layer pressed last tick. A real pad or PPSSPP's mapper may hold the
 	// same button, and clearing it would cancel their press.
@@ -348,8 +385,10 @@ static void ApplyStick(InputContext context, const std::vector<std::pair<InputKe
 	// (0.04 rad a second each way) and moved nobody. So it stays centred and the player stands to
 	// aim, as on the PSP.
 	const bool freeAim = context == kFoot && Settings().freeAim && FreeAimActive();
+	const bool bridge = FrontEndDriving();
+	float driveByX = 0.0f;
 	for (const auto &[key, h] : held) {
-		if (freeAim) {
+		if (freeAim || bridge) {
 			break;
 		}
 		if (!KeyLive(h, context)) {
@@ -361,6 +400,17 @@ static void ApplyStick(InputContext context, const std::vector<std::pair<InputKe
 				y += stick.y;
 			}
 		}
+		if (context == kCar) {
+			for (const DriveByKey &look : kDriveByKeys) {
+				if (look.key == key) {
+					driveByX += look.x;
+				}
+			}
+		}
+	}
+	// Both held (or neither) is no side at all: C is look behind, and Q + E is the same thing.
+	if (driveByX != 0.0f) {
+		x = driveByX;
 	}
 	if (x != 0.0f || y != 0.0f) {
 		// A diagonal is the same speed as a straight line, as on the nub.

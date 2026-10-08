@@ -40,6 +40,7 @@ struct Option;
 struct KeyListingRow;
 enum class OptionPage;
 enum class InputContext;
+enum class GamePage;
 }
 
 enum class LCSMenuPage {
@@ -168,6 +169,7 @@ private:
 
 	LCSMenuItem *AddRow(UI::ViewGroup *parent, const char *label, const char *help = nullptr);
 	void AddPageRow(UI::ViewGroup *parent, const char *label, LCSMenuPage target);
+	void AddGamePageRow(UI::ViewGroup *parent, const char *label, const char *help, LCS::GamePage page);
 	void AddPlaceholderRow(UI::ViewGroup *parent, const char *label, const char *help);
 	void AddBackRow(UI::ViewGroup *parent);
 	void AddOptionRows(UI::ViewGroup *parent, LCSMenuPage page);
@@ -194,6 +196,10 @@ private:
 	LCSMenuPage confirmParent_ = LCSMenuPage::Root;
 	bool pendingExit_ = false;
 	bool pendingEmulatorMenu_ = false;
+	// A save slot to load or delete, and a new game: what the question's YES asked for.
+	int pendingLoad_ = -1;
+	int pendingDelete_ = -1;
+	bool pendingNewGame_ = false;
 
 	std::vector<LCSMenuItem *> rows_;
 	std::vector<LCSBindingRow *> bindingRows_;
@@ -205,5 +211,15 @@ private:
 };
 
 // The pause screen for whatever is running: this menu over LCS, PPSSPP's own otherwise. Called
-// from EmuScreen's three pause sites.
+// from EmuScreen's pause sites. Null when the LCS front end took the pause itself: closing the
+// game's own menu, or ignoring it while a sequence walks that menu.
 UIScreen *CreatePauseScreen(const Path &gamePath, bool bootPending);
+// True once when this menu should come back: Back from one of the game's pages it opened, after the
+// page has gone. EmuScreen::update asks every frame.
+bool LCSMenuDue();
+// The LCS front end's curtain (LOADING, SAVING) and the hint line on the game's pages, over the game.
+// From EmuScreen::renderUI; nothing for any other game.
+void DrawLCSOverlay(UIContext &dc);
+// Whether DrawLCSOverlay has anything to draw (EmuScreen skips its UI pass otherwise).
+bool LCSOverlayVisible();
+void ReleaseLCSOverlayArt();

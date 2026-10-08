@@ -344,6 +344,71 @@ finds nothing at the absolute address. Live: 0 in play, 1 with the pause menu up
 again after a second Start (and after Backspace -> Circle through the input layer). The game frame
 counter keeps advancing while it is up.
 
+### The game's front end - live, [lcs/front-end.md](lcs/front-end.md) "The game's own pages"
+
+`FrontEndMenuManager` (`0x08b8ee20`) as its input handler (`0x08adcad4`, decompiled) and draw
+(`0x08adf724`, `0x08adfc40`) use it:
+
+| field | meaning | confirmed |
+|---|---|---|
+| `+0x000` s32 | the tab the strip is on, 1..8 | live: 1 on opening, right stepped 1, 2, 3, 4, 5, 1 |
+| `+0x018` s32 | the menu's fade, 255 when done; input waits for it | live: 150 -> 255 over 0.1 s after opening |
+| `+0x141` u8 | input enabled: set once the d-pad and stick are released and the fade is done; every direction getter (`0x08ad954c`, `..95b0`, `..9614`, `..96fc`) returns 0 while clear | live: 0 for ~0.2 s after opening |
+| `+0x46b` u8 | the save request: `activate_save_menu` (03DD, `0x089e8310`) sets it, `has_save_game_finished` (03DE) is `!(MenuActive or it)` | written over the debugger: the save list opened on page 12 |
+| `+0x564` s32 | the page, an index into the page table | live: map 7, brief 2, game 1, stats 0, the save list 12 |
+| `+0x568` s32 | the selected entry | live: LOAD GAME 0, NEW GAME 1; YES 2 on the questions |
+| `+0x574` s32 | the page before | |
+| `+0x584` s32 | the page's fade-in, 255 when done | live: 0 / 100 / 200 -> 255 after each tab change |
+| `+0x590` u8 | 1 once a page has focus, 0 while the tab strip has it (the strip is only drawn then) | live: Cross on the strip set it, Circle cleared it |
+
+The page table is `0x08b316b4`, 0x116 a page: an 8-byte GXT key, then 15 entries of 0x12 - an action
+(s16), an 8-byte key, a target page (+0xb), x, y, alignment. Pages: 0 stats, 1 game, 2 brief,
+3 controls, 4 audio, 5 display, 6 language, 7 map, 9 new game question, 10 load question, 11 the
+cheat warning, 12 the save list (the firmware's dialog over it), 13 the reset question, 14+
+multiplayer. Tabs 1-8 show pages 7, 2, 1, 0, 3, 4, 5, 14 (the handler's switch; Spanish puts
+controls last). The neighbour tables: `0x08b5905c` and, for language 4, `0x08b59134`; per tab
+`[up, down, left, right, -, label]`, 0x18 bytes.
+
+Start opens and closes the menu from anywhere in it (closing measured from inside a page).
+
+The hints: `FUN_08adf0c0` draws every one, called once, from `0x08ae5114` (`jal`, `0e2b7c30`).
+
+### Missions passed - static and live
+
+`register_mission_passed` (031D, `0x08a24740`): copies the 8-byte GXT key at the script's IP to
+**`0x08b5e398`**, adds one to **`0x08b5e2c0`**, stores `TimeInMs` at `0x08b5e4b4`.
+`register_oddjob_mission_passed` (059A, `0x08a32444`) adds one and leaves the key. The key is read
+by the save code (`0x088b253c`); the counter is zeroed at `0x08845840` and isn't saved. Live: a key
+and counter written together fired the auto-save; loading a save changed the key and not the count.
+
+### Script globals - static, from MAIN.SCM
+
+`GetPointerToScriptVariable` (`0x08956f38`): operand bytes `0x0c..0x6b` are locals, `0x6c..0xcb`
+local arrays, **`0xcc..0xe5` globals** (index `(byte - 0xcc) << 8 | next`), `0xe6..` global arrays;
+a global is `[0x08b38d7c] + index * 4`. `CollectParameters` (`0x08961bec`) types: 0 end, 1/2 zero,
+3/4/5 floats with 1/2/3 bytes, 6/9 32-bit, 7 int8, 8 int16. The safe house's save routine
+(`0x176d5` in MAIN.SCM): `$560` = 1, `$6` = 1, `$7..$9` = `$537..$539`, the ammo of 33 weapon types
+into `$124..$156`, `$158` armed weapon, `$160` armour, `$161` money, pickups `$290..$293`, then 03DD.
+The boot check (`0x6933`) runs the intro unless `$6` is 1; the load path (`0x48838`) gives the
+weapons back from `$124..$156`. Live: a save made with these set loaded in the safe house with `$6`
+1.
+
+### The game's own settings - static, written live
+
+| | address | |
+|---|---|---|
+| brightness | `0x08b59c68` s32 | 128..384 in 32s; the menu's action 0x0d (`0x08ada240`); 288 as shipped. Written live: the world brightened |
+| subtitles | `0x08b59c6c` u8 | action 0x0b |
+| HUD mode | `0x08b59c4a` u8 | action 0x23. Written 0 live: the money, health and clock went |
+| radar mode | `0x08b59c4c` s32 | action 0x22, 0..2: map and blips, blips only, off |
+| radio volume | `0x08b59c7c` s32 + `0x08b89d95` u8 | action 0x0e: the preference, and the mixer's byte its setter (`0x088647e8` -> `0x088b6194`) writes |
+| SFX volume | `0x08b59c78` s32 + `0x08b89d94` u8 | action 0x0f, setter `0x088647b0` |
+| invert look | `0x08b56433` u8 | action 0x06; saved with the game |
+| look speed | `0x08b3591c` float | 0.007, never written by the game |
+| language | `0x08b59c9c` s32 | 0..4 English, French, German, Italian, Spanish; set at boot from `sceUtilityGetSystemParamInt(8)` (`0x089c0e28`), not saved |
+
+A save restores the first five (`0x088b21a4`..).
+
 ### Free aim - live and static, [lcs/free-aim.md](lcs/free-aim.md)
 
 | | where | how found |

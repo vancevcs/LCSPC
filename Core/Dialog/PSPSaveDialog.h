@@ -24,6 +24,7 @@
 
 #include "Core/Dialog/PSPDialog.h"
 #include "Core/Dialog/SavedataParam.h"
+#include "Core/LCS/LCSSaveDialog.h"  // Fork-specific
 
 class PSPSaveDialog : public PSPDialog {
 public:
@@ -37,6 +38,9 @@ public:
 	pspUtilityDialogCommon *GetCommonParam() override;
 	// Waits for the IO thread, if any, to be done with PSP memory. Its results are still taken as usual.
 	void WaitForIO();
+	// Fork-specific: what is on screen, for the LCS front end's loads and saves. Read-only; see
+	// Core/LCS/LCSSaveDialog.h.
+	void LCSPeek(LCS::SaveDialogPeek *out);
 
 protected:
 	bool UseAutoStatus() override {

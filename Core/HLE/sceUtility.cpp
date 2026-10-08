@@ -49,6 +49,8 @@
 #include "Core/HLE/scePower.h"
 #include "Core/HLE/sceAtrac.h"
 #include "Core/HLE/sceUtility.h"
+#include "Core/LCS/LCSGame.h"  // Fork-specific
+#include "Core/LCS/LCSSettings.h"  // Fork-specific
 #include "Core/HLE/sceNet.h"
 #include "Core/HLE/sceNetAdhoc.h"
 
@@ -833,6 +835,19 @@ static int sceUtilitySavedataInitStart(u32 paramAddr) {
 	return hleLogDebug(Log::sceUtility, UtilityInitStart(UtilityDialogType::SAVEDATA, saveDialog, paramAddr));
 }
 
+// Fork-specific: the LCS front end's view of the savedata dialog (Core/LCS/LCSSaveDialog.h). Here
+// because the dialog object and the "is one up" flag are file-static. Emu thread only.
+namespace LCS {
+bool PeekSaveDialog(SaveDialogPeek *out) {
+	*out = SaveDialogPeek();
+	if (!currentDialogActive || currentDialogType != UtilityDialogType::SAVEDATA || !saveDialog) {
+		return false;
+	}
+	saveDialog->LCSPeek(out);
+	return out->active;
+}
+}  // namespace LCS
+
 static int sceUtilitySavedataShutdownStart() {
 	if (currentDialogType != UtilityDialogType::SAVEDATA)
 		return hleLogWarning(Log::sceUtility, SCE_ERROR_UTILITY_WRONG_TYPE, "wrong dialog type");
@@ -1588,6 +1603,10 @@ static u32 sceUtilityGetSystemParamInt(u32 id, u32 destaddr) {
 			if (param != PSP_SYSTEMPARAM_LANGUAGE_ENGLISH && param != PSP_SYSTEMPARAM_LANGUAGE_JAPANESE) {
 				param = PSP_SYSTEMPARAM_LANGUAGE_ENGLISH;
 			}
+		}
+		// Fork-specific: LCS picks its text from this at boot; the front end's Language row decides.
+		if (LCS::IsActive()) {
+			param = LCS::SystemLanguageForGame();
 		}
 		break;
 	case PSP_SYSTEMPARAM_ID_INT_BUTTON_PREFERENCE:

@@ -707,6 +707,9 @@ add_library(Core STATIC
 	LCS/LCSMips.h
 	LCS/LCSState.cpp
 	LCS/LCSState.h
+	LCS/LCSSaveDialog.h
+	LCS/LCSFrontEnd.cpp
+	LCS/LCSFrontEnd.h
 	LCS/LCSFreeAim.cpp
 	LCS/LCSFreeAim.h
 	LCS/LCSChaseCam.cpp

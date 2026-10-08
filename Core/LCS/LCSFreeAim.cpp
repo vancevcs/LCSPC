@@ -263,12 +263,12 @@ bool FreeAimLook(float dx, float dy) {
 		g_holding = true;
 	}
 
-	// The mouse on the same terms as on foot, scaled by the zoom so a count is the same distance on
-	// screen: mode 11 narrows the view to 50 degrees.
+	// The aim's own sensitivity and sense (the Aiming page), scaled by the zoom so a count is the
+	// same distance on screen: mode 11 narrows the view to 50 degrees.
 	const LCSSettings &s = Settings();
 	const float fov = ReadFloat(cam + kLCSCamFOVOffset).value_or(70.0f);
-	const float scale = s.mouseSensitivity * Clamp(fov / 70.0f, 0.2f, 2.0f);
-	const float ySign = s.invertMouseY ? -1.0f : 1.0f;
+	const float scale = s.aimSensitivity * Clamp(fov / 70.0f, 0.2f, 2.0f);
+	const float ySign = s.invertAimY ? -1.0f : 1.0f;
 	g_yaw = std::fmod(g_yaw - dx * scale, kTwoPi);
 	if (g_yaw < 0.0f) {
 		g_yaw += kTwoPi;

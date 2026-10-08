@@ -384,6 +384,9 @@
     <ClCompile Include="LCS\LCSState.cpp">
       <Filter>LCS</Filter>
     </ClCompile>
+    <ClCompile Include="LCS\LCSFrontEnd.cpp">
+      <Filter>LCS</Filter>
+    </ClCompile>
     <ClCompile Include="LCS\LCSFreeAim.cpp">
       <Filter>LCS</Filter>
     </ClCompile>
@@ -1753,6 +1756,12 @@
       <Filter>LCS</Filter>
     </ClInclude>
     <ClInclude Include="LCS\LCSState.h">
+      <Filter>LCS</Filter>
+    </ClInclude>
+    <ClInclude Include="LCS\LCSSaveDialog.h">
+      <Filter>LCS</Filter>
+    </ClInclude>
+    <ClInclude Include="LCS\LCSFrontEnd.h">
       <Filter>LCS</Filter>
     </ClInclude>
     <ClInclude Include="LCS\LCSFreeAim.h">

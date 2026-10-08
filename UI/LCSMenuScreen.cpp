@@ -30,8 +30,10 @@
 #include "Common/Render/ManagedTexture.h"
 #include "Common/Render/Text/Font.h"
 #include "Common/System/Display.h"
+#include "Common/System/OSD.h"
 #include "Common/System/Request.h"
 #include "Common/System/System.h"
+#include "Common/TimeUtil.h"
 #include "Common/UI/Context.h"
 #include "Common/UI/Root.h"
 #include "Common/UI/ScreenManager.h"
@@ -40,7 +42,9 @@
 #include "Core/ConfigValues.h"
 #include "Core/ELF/ParamSFO.h"
 #include "Core/System.h"
+#include "GPU/Common/PresentationCommon.h"
 #include "Core/LCS/LCSAddresses.h"
+#include "Core/LCS/LCSFrontEnd.h"
 #include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSSettings.h"
@@ -260,6 +264,11 @@ static bool ShowsBlocks(const LCS::Option &opt) {
 	return (opt.type == LCS::OptionType::Float || opt.type == LCS::OptionType::Int) && !opt.format;
 }
 
+// Ten, unless the row's range is fewer steps than that (brightness has eight).
+static int BlockCount(const LCS::Option *opt) {
+	return opt && opt->blocks > 0 ? opt->blocks : kSliderBlocks;
+}
+
 LCSMenuItem::LCSMenuItem(std::string_view label, UI::LayoutParams *layoutParams)
 	: UI::ClickableItem(layoutParams), label_(label) {}
 
@@ -283,7 +292,8 @@ void LCSMenuItem::GetContentDimensions(const UIContext &dc, float &w, float &h) 
 Bounds LCSMenuItem::BlockStripBounds() const {
 	const float blockH = std::min(bounds_.h, kRowHeight) * 0.34f;
 	const float gap = blockH * 0.28f;
-	const float width = kSliderBlocks * blockH + (kSliderBlocks - 1) * gap;
+	const int blocks = BlockCount(option_);
+	const float width = blocks * blockH + (blocks - 1) * gap;
 	return Bounds(ScreenCenterX() + kValueGap, bounds_.centerY() - blockH * 0.5f, width, blockH);
 }
 
@@ -302,7 +312,7 @@ void LCSMenuItem::Adjust(int direction) {
 		break;
 	case LCS::OptionType::Float:
 		// One block per press, so a press visibly moves exactly one square.
-		LCS::SetNormalized(*option_, LCS::GetNormalized(*option_) + (1.0f / kSliderBlocks) * (float)direction);
+		LCS::SetNormalized(*option_, LCS::GetNormalized(*option_) + (1.0f / BlockCount(option_)) * (float)direction);
 		break;
 	case LCS::OptionType::Int:
 		LCS::SetInt(*option_, *option_->intValue + (option_->stepInt > 0 ? option_->stepInt : 1) * direction);
@@ -332,7 +342,7 @@ void LCSMenuItem::Cycle() {
 		break;
 	}
 	case LCS::OptionType::Float: {
-		const float stride = 1.0f / (float)kSliderBlocks;
+		const float stride = 1.0f / (float)BlockCount(option_);
 		const float next = LCS::GetNormalized(*option_) + stride;
 		LCS::SetNormalized(*option_, next > 1.0f - stride * 0.5f ? 0.0f : next);
 		break;
@@ -477,11 +487,12 @@ void LCSMenuItem::Draw(UIContext &dc) {
 		const Bounds strip = BlockStripBounds();
 		const float blockH = strip.h;
 		const float gap = blockH * 0.28f;
-		const int filled = (int)(LCS::GetNormalized(*option_) * kSliderBlocks + 0.5f);
+		const int blocks = BlockCount(option_);
+		const int filled = (int)(LCS::GetNormalized(*option_) * blocks + 0.5f);
 		const uint32_t empty = IsEnabled() && !IsPlaceholder() ? kSliderEmptyColor : colorAlpha(kSliderEmptyColor, kPlaceholderAlpha);
 		dc.Flush();
 		dc.BeginNoTex();
-		for (int i = 0; i < kSliderBlocks; i++) {
+		for (int i = 0; i < blocks; i++) {
 			dc.Draw()->Rect(strip.x + i * (blockH + gap), strip.y, blockH, blockH, i < filled ? color : empty);
 		}
 		dc.Flush();
@@ -570,16 +581,22 @@ struct LCSSaveSlot {
 	int index;
 	std::string title;   // the mission the game named it after
 	std::string detail;  // place, day, money, completion, as the game wrote them
+	int64_t written = 0; // PARAM.SFO's modification time: the newest gets a mark
 };
+
+static Path SaveDir(int slot) {
+	char dir[32];
+	snprintf(dir, sizeof(dir), "%sS%d", LCS::kLCSDiscID, slot);
+	return GetSysDirectory(DIRECTORY_SAVEDATA) / dir;
+}
 
 // ULUS10041S0, S1, ...: what PARAM.SFO says about each save that is there. Read, never written.
 static std::vector<LCSSaveSlot> EnumerateSaves() {
 	std::vector<LCSSaveSlot> slots;
 	for (int i = 0; i < 10; i++) {
-		char dir[32];
-		snprintf(dir, sizeof(dir), "%sS%d", LCS::kLCSDiscID, i);
 		std::string data;
-		if (!File::ReadBinaryFileToString(GetSysDirectory(DIRECTORY_SAVEDATA) / dir / "PARAM.SFO", &data)) {
+		const Path sfoPath = SaveDir(i) / "PARAM.SFO";
+		if (!File::ReadBinaryFileToString(sfoPath, &data)) {
 			continue;
 		}
 		ParamSFOData sfo;
@@ -588,10 +605,34 @@ static std::vector<LCSSaveSlot> EnumerateSaves() {
 		}
 		std::string detail = sfo.GetValueString("SAVEDATA_DETAIL");
 		std::replace(detail.begin(), detail.end(), '\n', ' ');
-		slots.push_back({ i, sfo.GetValueString("SAVEDATA_TITLE"), detail });
+		File::FileInfo info;
+		const int64_t written = File::GetFileInfo(sfoPath, &info) ? (int64_t)info.mtime : 0;
+		// The game names a save after the last mission passed; before the first there is no name.
+		std::string title = sfo.GetValueString("SAVEDATA_TITLE");
+		if (title.empty()) {
+			title = "SAVED GAME";
+		}
+		slots.push_back({ i, title, detail, written });
 	}
 	return slots;
 }
+
+// A save is a directory on the memory stick, and the game lists the stick again every time it
+// opens a list, so deleting one is removing it here rather than walking the game's DELETE SAVE DATA
+// and a third firmware dialog to do the same.
+static bool DeleteSave(int slot) {
+	const Path dir = SaveDir(slot);
+	if (!File::IsDirectory(dir)) {
+		return false;
+	}
+	const bool ok = File::DeleteDirRecursively(dir);
+	NOTICE_LOG(Log::System, "LCS menu: deleted save %d (%s)", slot, ok ? "ok" : "failed");
+	return ok;
+}
+
+// The root row MAP, STATS or BRIEF was chosen from, so the menu that comes back after the game's
+// page has gone opens on it. -1 for the usual first row.
+static int g_rootReturnRow = -1;
 
 // --- The screen ---
 
@@ -791,6 +832,18 @@ void LCSMenuScreen::AddPageRow(UI::ViewGroup *parent, const char *label, LCSMenu
 	});
 }
 
+// A page of the game's own front end: asked for, then out of the way, because the walk to it presses
+// the game's buttons and this screen pauses the game. Back from it comes here again, on this row.
+void LCSMenuScreen::AddGamePageRow(UI::ViewGroup *parent, const char *label, const char *help, LCS::GamePage page) {
+	LCSMenuItem *row = AddRow(parent, label, help);
+	const int index = (int)rows_.size() - 1;
+	row->OnClick.Add([this, page, index](UI::EventParams &e) {
+		g_rootReturnRow = index;
+		LCS::RequestGamePage(page);
+		TriggerFinish(DR_CANCEL);
+	});
+}
+
 void LCSMenuScreen::AddPlaceholderRow(UI::ViewGroup *parent, const char *label, const char *help) {
 	AddRow(parent, label, help)->SetPlaceholder();
 }
@@ -808,6 +861,8 @@ static void AddGap(UI::ViewGroup *parent) {
 }
 
 void LCSMenuScreen::AddOptionRows(UI::ViewGroup *parent, LCSMenuPage page) {
+	// A row standing in for part of a PPSSPP setting shows what PPSSPP has now.
+	LCS::RefreshOptionProxies();
 	const LCS::OptionPage optionPage = ToOptionPage(page);
 	for (const LCS::Option &option : LCS::Options()) {
 		if (option.page != optionPage) {
@@ -832,21 +887,41 @@ void LCSMenuScreen::AddOptionRows(UI::ViewGroup *parent, LCSMenuPage page) {
 
 void LCSMenuScreen::AddSaveRows(UI::ViewGroup *parent, bool deleting) {
 	const std::vector<LCSSaveSlot> slots = EnumerateSaves();
+	int64_t newest = 0;
 	for (const LCSSaveSlot &slot : slots) {
-		char label[128];
-		snprintf(label, sizeof(label), "%d.  %s", slot.index + 1, slot.title.c_str());
+		newest = std::max(newest, slot.written);
+	}
+	const int autoSlot = LCS::Settings().autoSaveSlot;
+	for (const LCSSaveSlot &slot : slots) {
+		// The number is the game's own slot; a * is the newest, the one carrying on would load.
+		char label[160];
+		snprintf(label, sizeof(label), "%d.  %s%s%s", slot.index + 1, slot.title.c_str(),
+			slot.index == autoSlot ? "  (AUTO)" : "", slot.written == newest && slots.size() > 1 ? "  *" : "");
 		LCSMenuItem *row = AddRow(parent, label);
 		row->SetHelp(slot.detail);
 		row->SetLeftAligned(ScreenCenterX() - kSaveListInset);
-		// The list is real, read from the memory stick; acting on a save is to come (loading needs
-		// the game's own menu walked, as the VCS fork does).
-		row->SetPlaceholder();
+		const int index = slot.index;
+		const std::string title = slot.title;
+		if (deleting) {
+			row->OnClick.Add([this, index, title](UI::EventParams &e) {
+				GoToConfirm("delete game", "Delete " + title + "? It can't be brought back.", "",
+					[this, index]() {
+						pendingDelete_ = index;
+					});
+			});
+		} else {
+			row->OnClick.Add([this, index, title](UI::EventParams &e) {
+				GoToConfirm("load game", "All unsaved progress in your current game will be lost. Load " + title + "?", "",
+					[this, index]() {
+						pendingLoad_ = index;
+					});
+			});
+		}
 	}
 	if (slots.empty()) {
 		LCSMenuItem *row = AddRow(parent, "NO SAVES", "Nothing saved on the memory stick yet.");
 		row->SetEnabled(false);
 	}
-	(void)deleting;
 	AddBackRow(parent);
 }
 
@@ -936,9 +1011,9 @@ void LCSMenuScreen::CreateViews() {
 	case LCSMenuPage::Root:
 		AddRow(list, "RESUME")->OnClick.Handle(this, &LCSMenuScreen::OnResume);
 		AddPageRow(list, "START NEW GAME", LCSMenuPage::Game);
-		AddPlaceholderRow(list, "MAP", "The city map, with your position and the places you have found.");
-		AddPlaceholderRow(list, "STATS", "Everything the game has been counting.");
-		AddPlaceholderRow(list, "BRIEF", "What you were last told to do.");
+		AddGamePageRow(list, "MAP", "The city map, with your position and the places you have found.", LCS::GamePage::Map);
+		AddGamePageRow(list, "STATS", "Everything the game has been counting.", LCS::GamePage::Stats);
+		AddGamePageRow(list, "BRIEF", "What you were last told to do.", LCS::GamePage::Brief);
 		AddPageRow(list, "CHEATS", LCSMenuPage::Cheats);
 		AddPageRow(list, "OPTIONS", LCSMenuPage::Settings);
 		AddRow(list, "QUIT GAME")->OnClick.Handle(this, &LCSMenuScreen::OnExitGame);
@@ -967,8 +1042,14 @@ void LCSMenuScreen::CreateViews() {
 		break;
 	case LCSMenuPage::Game:
 		// The game's own Game tab, rebuilt: the same three things, in the same order.
-		AddPlaceholderRow(list, "NEW GAME", "Start the story again from the beginning.");
+		AddRow(list, "NEW GAME", "Start the story again from the beginning.")->OnClick.Add([this](UI::EventParams &e) {
+			GoToConfirm("new game", "Are you sure you want to start a new game? All progress since the last save game will be lost. Proceed?", "",
+				[this]() {
+					pendingNewGame_ = true;
+				});
+		});
 		AddPageRow(list, "LOAD GAME", LCSMenuPage::LoadGame);
+		rows_.back()->SetHelp("The saves on the memory stick. * is the newest.");
 		AddPageRow(list, "DELETE GAME", LCSMenuPage::DeleteGame);
 		AddBackRow(list);
 		break;
@@ -1021,7 +1102,12 @@ void LCSMenuScreen::CreateViews() {
 		UI::SetFocusedView(bindingRows_[0], UI::FocusFlags::CAUSE_SCREEN_CHANGE);
 	} else if (!rows_.empty()) {
 		auto it = lastFocus_.find(page_);
-		const int index = it != lastFocus_.end() && it->second < (int)rows_.size() ? it->second : 0;
+		int index = it != lastFocus_.end() && it->second < (int)rows_.size() ? it->second : 0;
+		// Coming back from one of the game's pages: the row it was opened from.
+		if (page_ == LCSMenuPage::Root && g_rootReturnRow >= 0 && g_rootReturnRow < (int)rows_.size()) {
+			index = g_rootReturnRow;
+			g_rootReturnRow = -1;
+		}
 		UI::SetFocusedView(rows_[index], UI::FocusFlags::CAUSE_SCREEN_CHANGE);
 	}
 }
@@ -1042,6 +1128,31 @@ void LCSMenuScreen::update() {
 	if (pendingEmulatorMenu_) {
 		pendingEmulatorMenu_ = false;
 		screenManager()->switchScreen(new GamePauseScreen(gamePath_, bootPending_));
+		return;
+	}
+	// Loading and a new game go through the game's own menu, which needs the game running: asked
+	// for, and this screen gets out of the way.
+	if (pendingLoad_ >= 0) {
+		LCS::RequestLoadSlot(pendingLoad_);
+		pendingLoad_ = -1;
+		TriggerFinish(DR_CANCEL);
+		return;
+	}
+	if (pendingNewGame_) {
+		pendingNewGame_ = false;
+		LCS::RequestNewGame();
+		TriggerFinish(DR_CANCEL);
+		return;
+	}
+	if (pendingDelete_ >= 0) {
+		const int slot = pendingDelete_;
+		pendingDelete_ = -1;
+		if (!DeleteSave(slot)) {
+			g_OSD.Show(OSDType::MESSAGE_ERROR, "That save couldn't be deleted", 3.0f, "lcs_menu");
+		}
+		page_ = LCSMenuPage::DeleteGame;
+		lastFocus_.erase(LCSMenuPage::DeleteGame);
+		RecreateViews();
 		return;
 	}
 
@@ -1151,8 +1262,149 @@ void LCSMenuScreen::OnRestoreDefaults(UI::EventParams &e) {
 }
 
 UIScreen *CreatePauseScreen(const Path &gamePath, bool bootPending) {
-	if (LCS::IsActive()) {
-		return new LCSMenuScreen(gamePath, bootPending);
+	if (!LCS::IsActive()) {
+		return new GamePauseScreen(gamePath, bootPending);
 	}
-	return new GamePauseScreen(gamePath, bootPending);
+	// While a sequence walks the game's menu, or the firmware's save list is up (it has its own
+	// Back), a pause would stop the thing it would interrupt half way.
+	if (LCS::ActiveCurtain() != LCS::CurtainKind::None || LCS::FrontEndBusy() || LCS::SaveDialogUp()) {
+		return nullptr;
+	}
+	// With the game's own menu up, the pause key puts it away. On a page this fork opened, this
+	// fork's menu comes back afterwards (LCSMenuDue); the game's own menu, opened with its Start,
+	// just closes.
+	if (LCS::GameMenuUp()) {
+		LCS::RequestCloseGameMenu(LCS::BridgeOwnsMenu());
+		return nullptr;
+	}
+	return new LCSMenuScreen(gamePath, bootPending);
+}
+
+bool LCSMenuDue() {
+	if (!LCS::IsActive() || LCS::GameMenuUp() || LCS::FrontEndBusy()) {
+		return false;
+	}
+	if (!LCS::TakeMenuAfterClose()) {
+		return false;
+	}
+	// The curtain that covered the frames between the game's menu going and this one coming: this
+	// one is opaque, and the tick that would take it down stops while it is up.
+	LCS::DropCurtain();
+	return true;
+}
+
+// --- Over the game: the curtain, and the hint line on the game's own pages ---
+//
+// Drawn by EmuScreen rather than pushed as a screen: a screen pauses the emulator, and what these
+// cover is the game working. Their art is their own, made on the first draw and released with the
+// device.
+
+static std::unique_ptr<LCSMenuArt> g_overlayArt;
+
+static const FontStyle kCurtainFont(FontFamily::Display, 44, FontStyleFlags::Default);
+static const FontStyle kStripFont(FontFamily::SansSerif, 22, FontStyleFlags::Default);
+static constexpr float kCurtainFadeSeconds = 0.5f;
+
+void ReleaseLCSOverlayArt() {
+	g_overlayArt.reset();
+}
+
+// The menu's backdrop, the whole screen, and one word bottom left: the VCS fork's loading screen
+// over LCS's own pause-menu backdrop. No word for a menu transition (the menu the player was
+// looking at is about to be back). The dots are there so a still screen doesn't read as a hang.
+static void DrawCurtain(UIContext &dc, float alpha, const char *word) {
+	if (alpha <= 0.0f) {
+		return;
+	}
+	alpha = std::min(alpha, 1.0f);
+	if (!g_overlayArt) {
+		g_overlayArt.reset(new LCSMenuArt());
+	}
+	const Bounds &bounds = dc.GetBounds();
+	// The flat fill first and always: a build without assets/lcs gets a plain dark loading screen,
+	// not a transparent one with the walk showing through.
+	dc.FillRect(UI::Drawable(colorAlpha(kBackgroundColor, alpha)), bounds);
+	if (Draw::Texture *backdrop = g_overlayArt->Image(dc, "lcs/background.png")) {
+		DrawTexture(dc, backdrop, bounds, colorAlpha(0xFFFFFFFF, alpha));
+	}
+	if (word) {
+		const int dots = (int)(time_now_d() * 2.0) % 4;
+		char text[32];
+		snprintf(text, sizeof(text), "%s%.*s", word, dots, "...");
+		dc.SetFontStyle(kCurtainFont);
+		dc.DrawTextShadow(text, bounds.x + kTitleLeft, bounds.y2() - kTitleTop,
+			colorAlpha(kItemColor, alpha), ALIGN_LEFT | ALIGN_BOTTOM);
+	}
+	dc.Flush();
+}
+
+// What works on the game's page, where its own button hints were: the keys of this fork, in the
+// strip along the bottom of the PSP's picture (the bottom 48 of its 272 lines).
+static void DrawPageHints(UIContext &dc, int page) {
+	const char *hint = "ESC - BACK";
+	if (page == LCS::kLCSPageMap) {
+		hint = "WASD - SCROLL     WHEEL / Q E - ZOOM     F - MARKER     ENTER - LEGEND     ESC - BACK";
+	} else if (page == LCS::kLCSPageBrief || page == LCS::kLCSPageStats) {
+		hint = "W / S - SCROLL     ESC - BACK";
+	}
+	const DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(g_display.GetDeviceOrientation());
+	const FRect frame = GetScreenFrame(config.bIgnoreScreenInsets, g_display.pixel_xres, g_display.pixel_yres);
+	FRect rc;
+	CalculateDisplayOutputRect(config, &rc, 480.0f, 272.0f, frame, config.iInternalScreenRotation);
+	// Pixels to the UI's units.
+	const float sx = g_display.pixel_xres > 0 ? g_display.dp_xres / (float)g_display.pixel_xres : 1.0f;
+	const float sy = g_display.pixel_yres > 0 ? g_display.dp_yres / (float)g_display.pixel_yres : 1.0f;
+	const float stripTop = (rc.y + rc.h * (224.0f / 272.0f)) * sy;
+	const float stripBottom = (rc.y + rc.h) * sy;
+	const float right = (rc.x + rc.w) * sx - kTitleLeft * 0.5f;
+	dc.SetFontStyle(kStripFont);
+	dc.DrawTextShadow(hint, right, (stripTop + stripBottom) * 0.5f, kHintColor, ALIGN_VCENTER | ALIGN_RIGHT);
+	dc.Flush();
+}
+
+// The curtain's fade-out, after the sequence has let it go: wall clock, so it takes the same time on
+// a machine that isn't keeping up.
+static bool g_curtainWasUp = false;
+static double g_curtainFadeStart = 0.0;
+static const char *g_curtainWord = nullptr;
+
+bool LCSOverlayVisible() {
+	return LCS::IsActive() && (g_curtainWasUp || LCS::ActiveCurtain() != LCS::CurtainKind::None || LCS::OwnedGamePage() >= 0);
+}
+
+void DrawLCSOverlay(UIContext &dc) {
+	bool &wasUp = g_curtainWasUp;
+	double &fadeStart = g_curtainFadeStart;
+	const char *&word = g_curtainWord;
+	if (!LCS::IsActive()) {
+		wasUp = false;
+		return;
+	}
+	const LCS::CurtainKind kind = LCS::ActiveCurtain();
+	if (kind != LCS::CurtainKind::None) {
+		// Remembered for the fade, which runs after the sequence has let go of the kind.
+		word = kind == LCS::CurtainKind::Saving ? "SAVING" : kind == LCS::CurtainKind::Loading ? "LOADING" : nullptr;
+		wasUp = true;
+		fadeStart = 0.0;
+		DrawCurtain(dc, 1.0f, word);
+		return;
+	}
+	const int page = LCS::OwnedGamePage();
+	if (page >= 0) {
+		DrawPageHints(dc, page);
+	}
+	if (!wasUp) {
+		return;
+	}
+	const double now = time_now_d();
+	if (fadeStart == 0.0) {
+		fadeStart = now;
+	}
+	const float t = (float)(now - fadeStart) / kCurtainFadeSeconds;
+	if (t >= 1.0f || page >= 0) {
+		// A page the bridge opened is what the player asked to look at: no fade over it.
+		wasUp = false;
+		return;
+	}
+	DrawCurtain(dc, 1.0f - t, word);
 }

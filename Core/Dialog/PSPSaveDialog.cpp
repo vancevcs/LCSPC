@@ -1426,3 +1426,37 @@ void PSPSaveDialog::DoState(PointerWrap &p) {
 pspUtilityDialogCommon *PSPSaveDialog::GetCommonParam() {
 	return &param.GetPspParam()->common;
 }
+
+// Fork-specific, read-only: for the LCS front end (Core/LCS/LCSSaveDialog.h). `busy` folds the IO
+// thread, the fades and every screen not named here into one answer, because the caller does the
+// same with all of them: waits.
+void PSPSaveDialog::LCSPeek(LCS::SaveDialogPeek *out) {
+	*out = LCS::SaveDialogPeek();
+	out->active = GetStatus() == SCE_UTILITY_STATUS_RUNNING;
+	if (!out->active) {
+		return;
+	}
+	out->selected = currentSelectedSave;
+	out->count = param.GetFilenameCount();
+	out->yesno = yesnoChoice;
+	out->okButton = (u32)okButtonFlag;
+	out->cancelButton = (u32)cancelButtonFlag;
+	for (int i = 0; i < out->count && i < LCS::SaveDialogPeek::kMaxNames; i++) {
+		truncate_cpy(out->names[i], param.GetFileInfo(i).saveName.c_str());
+	}
+	switch (display) {
+	case DS_SAVE_LIST_CHOICE: out->save = true; out->list = true; break;
+	case DS_SAVE_CONFIRM:
+	case DS_SAVE_CONFIRM_OVERWRITE: out->save = true; out->confirm = true; break;
+	case DS_SAVE_DONE: out->save = true; out->done = true; break;
+	case DS_SAVE_SAVING: out->save = true; out->busy = true; break;
+	case DS_LOAD_LIST_CHOICE: out->list = true; break;
+	case DS_LOAD_CONFIRM: out->confirm = true; break;
+	case DS_LOAD_DONE: out->done = true; break;
+	default: out->busy = true; break;
+	}
+	if (isFading) {
+		out->busy = true;
+		out->list = out->confirm = out->done = false;
+	}
+}

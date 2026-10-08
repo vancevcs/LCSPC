@@ -56,10 +56,16 @@ static const char *const kAnisoLabels[] = { "Off", "2x", "4x", "8x", "16x" };
 static const char *const kWidescreenLabels[] = { "Off", "Crop", "Wider" };
 static const char *const kShadowLabels[] = { "LOW", "MEDIUM", "HIGH", "ULTRA" };
 static const char *const kWaterLabels[] = { "LOW", "MEDIUM", "HIGH" };
-// The disc's five GXTs, each in its own language and without accents (the menu face has none).
+// The disc's five GXTs, each in its own language and without accents (the menu face has none), in
+// the game's own order (the language page's actions 0x12..0x16).
 static const char *const kLanguageLabels[] = {
-	"ENGLISH", "FRANCAIS", "DEUTSCH", "ESPANOL", "ITALIANO",
+	"ENGLISH", "FRANCAIS", "DEUTSCH", "ITALIANO", "ESPANOL",
 };
+// The PSP system language that makes the game pick each of them (0x089c0e28's switch).
+static const int kLanguageSystemCodes[] = { 1, 2, 4, 5, 3 };
+static_assert(ARRAY_SIZE(kLanguageLabels) == ARRAY_SIZE(kLanguageSystemCodes), "a code per language");
+// RADAR MODE, the game's words (FED_RDM, FED_RDB, FEM_OFF).
+static const char *const kRadarLabels[] = { "MAP AND BLIPS", "BLIPS ONLY", "OFF" };
 
 // "3x (1440x816)": the multiplier is the setting, the pixel count what it does. Auto rounds the
 // window up to a whole multiple of 480, the same arithmetic as CalculateRenderResolution.
@@ -77,27 +83,34 @@ static std::string ResolutionText(const Option &opt) {
 // promised before the feature exists. The values are the ones the VCS fork ships.
 static struct {
 	bool padScheme = true;
-	float padLookSpeed = 14.0f;
-	bool padInvertY = false;
-	float padDeadzone = 0.15f;
-	float aimSensitivity = 0.0012f;
-	bool aimInvertY = false;
 	float scopedSensitivity = 0.05f;
-	int sfxVolume = 100;
-	int radioVolume = 100;
 	bool customTracks = false;
-	int brightness = 50;
 	int widescreen = 0;
-	bool showFps = false;
 	int shadows = 1;
 	bool ambientOcclusion = false;
 	int water = 1;
-	bool autoSave = false;
 	bool gpsRoute = false;
-	int language = 0;
-	bool subtitles = true;
-	bool hud = true;
 } g_placeholder;
+
+// Rows standing in for one part of a PPSSPP setting: read back by RefreshOptionProxies, written
+// through by the row's onChange.
+static bool g_showFpsProxy = false;
+
+static void ApplyShowFps() {
+	if (g_showFpsProxy) {
+		g_Config.iShowStatusFlags |= (int)ShowStatusFlags::FPS_COUNTER;
+	} else {
+		g_Config.iShowStatusFlags &= ~(int)ShowStatusFlags::FPS_COUNTER;
+	}
+}
+
+void RefreshOptionProxies() {
+	g_showFpsProxy = (g_Config.iShowStatusFlags & (int)ShowStatusFlags::FPS_COUNTER) != 0;
+}
+
+int SystemLanguageForGame() {
+	return kLanguageSystemCodes[std::clamp(g_settings.language, 0, (int)ARRAY_SIZE(kLanguageSystemCodes) - 1)];
+}
 
 // --- The table ---
 
@@ -225,23 +238,23 @@ const std::vector<Option> &Options() {
 			&chase.vehicleRecentre);
 		enabledBy(&s.vehicleChaseCamera);
 
-		// --- Controller (to come: the pad's own scheme) ---
+		// --- Controller ---
 
 		addBool(OptionPage::Controller, nullptr, "Controller scheme",
 			"A pad laid out like the PC game's, with the right stick on the camera.",
 			&g_placeholder.padScheme);
 		placeholder();
-		addFloat(OptionPage::Controller, nullptr, "Look sensitivity",
-			"How fast the right stick turns the camera.",
-			&g_placeholder.padLookSpeed, 4.0f, 40.0f);
-		placeholder();
-		addBool(OptionPage::Controller, nullptr, "Invert look vertically",
-			"Push the right stick forward to look down.", &g_placeholder.padInvertY);
-		placeholder();
+		addFloat(OptionPage::Controller, "PadLookSensitivity", "Look sensitivity",
+			"How fast the stick turns the camera when you look around. The game's own speed is the middle.",
+			&s.padLookSensitivity, 0.002f, 0.012f);
+		addBool(OptionPage::Controller, "GameInvertLook", "Invert look vertically",
+			"Push the stick forward to look down. The game's own INVERT LOOK.", &s.gameInvertLook);
 		addFloat(OptionPage::Controller, nullptr, "Stick deadzone",
-			"How far a stick must move before it counts.",
-			&g_placeholder.padDeadzone, 0.02f, 0.45f);
-		placeholder();
+			"How far a stick must move before it counts. PPSSPP's own setting.",
+			&g_Config.fAnalogDeadzone, 0.0f, 0.5f);
+		opts.back().external = true;
+		// Config has no float twin of GetDefaultValueInt: its table's default (Config.cpp).
+		opts.back().defaultFloat = 0.15f;
 
 		// --- Aiming ---
 
@@ -250,13 +263,13 @@ const std::vector<Option> &Options() {
 			"Off leaves the game's lock-on.",
 			&s.freeAim);
 		enabledBy(&s.keyboardMouse);
-		addFloat(OptionPage::Aiming, nullptr, "Aim sensitivity",
-			"Aiming on a channel of its own, slower than looking.",
-			&g_placeholder.aimSensitivity, 0.00005f, 0.008f);
-		placeholder();
-		addBool(OptionPage::Aiming, nullptr, "Invert aim vertically", "",
-			&g_placeholder.aimInvertY);
-		placeholder();
+		addFloat(OptionPage::Aiming, "AimSensitivity", "Aim sensitivity",
+			"How far the aim moves per unit of mouse movement while aiming, apart from looking.",
+			&s.aimSensitivity, 0.0005f, 0.01f);
+		enabledBy(&s.freeAim);
+		addBool(OptionPage::Aiming, "InvertAimY", "Invert aim vertically",
+			"Push the mouse forward to aim down.", &s.invertAimY);
+		enabledBy(&s.freeAim);
 		addFloat(OptionPage::Aiming, nullptr, "Sniper and RPG sensitivity",
 			"Only for the two scoped weapons.",
 			&g_placeholder.scopedSensitivity, 0.005f, 0.2f);
@@ -272,14 +285,14 @@ const std::vector<Option> &Options() {
 			&g_Config.iGameVolume, VOLUME_OFF, VOLUMEHI_FULL, VOLUMEHI_FULL / 10,
 			Config::GetDefaultValueInt(&g_Config.iGameVolume), true);
 		enabledBy(&g_Config.bEnableSound);
-		addInt(OptionPage::Audio, nullptr, "SFX volume",
+		// The game's 0..127 in steps of 13, so ten presses reach the top (clamped to 127, as the
+		// game's own slider is) and each lights one block.
+		addInt(OptionPage::Audio, "SfxVolume", "SFX volume",
 			"Engines, weapons, footsteps and the people talking. The game's own setting.",
-			&g_placeholder.sfxVolume, 0, 100, 10, 100);
-		placeholder();
-		addInt(OptionPage::Audio, nullptr, "Radio volume",
-			"The car radio. The game's own menu calls this MUSIC.",
-			&g_placeholder.radioVolume, 0, 100, 10, 100);
-		placeholder();
+			&s.sfxVolume, 0, 127, 13, s.sfxVolume);
+		addInt(OptionPage::Audio, "RadioVolume", "Radio volume",
+			"The car radio and the cutscenes' music. The game's own setting.",
+			&s.musicVolume, 0, 127, 13, s.musicVolume);
 		addBool(OptionPage::Audio, nullptr, "Custom soundtracks",
 			"Your own music on the radio, from the memory stick.",
 			&g_placeholder.customTracks);
@@ -287,10 +300,10 @@ const std::vector<Option> &Options() {
 
 		// --- Display ---
 
-		addInt(OptionPage::Graphics, nullptr, "Brightness",
-			"How bright the game draws the world. The game's own Display setting.",
-			&g_placeholder.brightness, 0, 100, 10, 50);
-		placeholder();
+		addInt(OptionPage::Graphics, "Brightness", "Brightness",
+			"How bright the game draws everything. The game's own Display setting.",
+			&s.gameBrightness, 128, 384, 32, s.gameBrightness);
+		opts.back().blocks = 8;
 		addChoice(OptionPage::Graphics, nullptr, "Resolution",
 			"Internal rendering resolution. Higher is sharper and costs more.",
 			&g_Config.iInternalResolution, kResolutionLabels, ARRAY_SIZE(kResolutionLabels),
@@ -312,8 +325,8 @@ const std::vector<Option> &Options() {
 				return std::string(*opt.boolValue ? "60 FPS" : "30 FPS");
 			});
 		addBool(OptionPage::Graphics, nullptr, "Show FPS",
-			"The frame rate in the corner of the screen.", &g_placeholder.showFps);
-		placeholder();
+			"The frame rate in the corner of the screen. PPSSPP's own counter.", &g_showFpsProxy,
+			true, false, &ApplyShowFps);
 
 		// --- Display, advanced ---
 
@@ -352,30 +365,32 @@ const std::vector<Option> &Options() {
 				return std::string(*opt.boolValue ? "LARGE" : "PSP");
 			});
 
-		// --- Gameplay (to come) ---
+		// --- Gameplay ---
 
-		addBool(OptionPage::Gameplay, nullptr, "Auto-save",
-			"Save after every story mission, over the auto-save slot.", &g_placeholder.autoSave);
-		placeholder();
+		addBool(OptionPage::Gameplay, "AutoSave", "Auto-save",
+			"Save after every story mission, into the last save slot. Your other saves are never touched.",
+			&s.autoSave);
 		addBool(OptionPage::Gameplay, nullptr, "GPS route",
 			"A route to your marker on the radar, along the roads.", &g_placeholder.gpsRoute);
 		placeholder();
-		addChoice(OptionPage::Gameplay, nullptr, "Language",
-			"The game's text and menus; the voices stay English.",
-			&g_placeholder.language, kLanguageLabels, ARRAY_SIZE(kLanguageLabels), 0);
-		placeholder();
-		addBool(OptionPage::Gameplay, nullptr, "Subtitles",
-			"Dialogue as text on screen, in cutscenes and on the phone.", &g_placeholder.subtitles);
-		placeholder();
-		addBool(OptionPage::Gameplay, nullptr, "HUD",
-			"Health, armour, money, the weapon and the clock.", &g_placeholder.hud);
-		placeholder();
+		addChoice(OptionPage::Gameplay, "Language", "Language",
+			"The game's text and menus; the voices stay English. Takes effect the next time the game starts.",
+			&s.language, kLanguageLabels, ARRAY_SIZE(kLanguageLabels), 0);
+		addBool(OptionPage::Gameplay, "Subtitles", "Subtitles",
+			"Dialogue as text on screen, in cutscenes. The game's own setting.", &s.gameSubtitles);
+		addBool(OptionPage::Gameplay, "Hud", "HUD",
+			"Health, armour, money, the weapon and the clock. The game's own HUD MODE.", &s.gameHud);
+		addChoice(OptionPage::Gameplay, "RadarMode", "Radar",
+			"The radar in the corner. The game's own RADAR MODE.",
+			&s.gameRadar, kRadarLabels, ARRAY_SIZE(kRadarLabels), 0);
 
 		// --- Developer (no menu page) ---
 
 		addBool(OptionPage::Developer, "DumpTextures", "Texture dump",
 			"Saves every texture drawn for the first time to TEXTURES/ULUS10041/new, for the HD pack.",
 			&s.dumpTextures, false, false, &ApplyTextureDump);
+		addInt(OptionPage::Developer, "AutoSaveSlot", "Auto-save slot",
+			"The save slot the auto-save last wrote.", &s.autoSaveSlot, -1, 99, 1, -1);
 
 		return opts;
 	}();
@@ -418,6 +433,15 @@ void LoadSettings() {
 			break;
 		}
 	}
+	// Free aim had no channel of its own before AimSensitivity and InvertAimY: a file from then
+	// keeps the look values it was aiming with.
+	if (!section->HasKey("AimSensitivity")) {
+		g_settings.aimSensitivity = g_settings.mouseSensitivity;
+	}
+	if (!section->HasKey("InvertAimY")) {
+		g_settings.invertAimY = g_settings.invertMouseY;
+	}
+	RefreshOptionProxies();
 	NOTICE_LOG(Log::System, "LCS: settings loaded (FrameRate60 = %s, KeyboardMouse = %s, MouseLook = %s, MouseSensitivity = %g, VehicleChaseCamera = %s, FootChaseCamera = %s)",
 		g_settings.frameRate60 ? "true" : "false", g_settings.keyboardMouse ? "true" : "false",
 		g_settings.mouseLook ? "true" : "false", g_settings.mouseSensitivity,

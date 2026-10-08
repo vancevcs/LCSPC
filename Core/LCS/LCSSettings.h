@@ -58,6 +58,34 @@ struct LCSSettings {
 	// goes to TEXTURES/ULUS10041/new, which the HD pack is bound from (Tools/lcshd.py), so every
 	// session adds to it. Off leaves PPSSPP's own checkbox in charge.
 	bool dumpTextures = true;
+
+	// Free aim's own channel (LCSFreeAim): radians per mouse count, and its vertical sense. A file
+	// from before these existed takes the look settings' values, so nothing changes for it.
+	float aimSensitivity = 0.0025f;
+	bool invertAimY = false;
+
+	// Save after every story mission, into the game's last save slot (LCSFrontEnd).
+	bool autoSave = true;
+	// The text language, the game's order: English, French, German, Italian, Spanish. Handed to the
+	// game as the PSP's system language when it asks at boot, so it takes a restart.
+	int language = 0;
+
+	// The game's own settings, from the Display, Audio and Controls pages of its front end, which
+	// this fork's menu stands in for. Mirrored into the game by LCSFrontEnd whenever it disagrees,
+	// which also puts them back after a save loads its own. The defaults are the game's (its RESET
+	// GAME SETTINGS, 0x08adcad4 case 0x2a).
+	int gameBrightness = 288;     // 128..384 in 32s
+	bool gameSubtitles = false;   // the game's default in English
+	bool gameHud = true;
+	int gameRadar = 0;            // map and blips, blips only, off
+	int sfxVolume = 96;           // 0..127
+	int musicVolume = 80;         // the radio
+	bool gameInvertLook = false;  // the stick's look up and down (the game's INVERT LOOK)
+	float padLookSensitivity = 0.007f;  // squared in the game's look response
+
+	// The save slot (the S<n> of ULUS10041S<n>) the auto-save last wrote, so the save list can say
+	// which it is; -1 before the first. Written by LCSFrontEnd.
+	int autoSaveSlot = -1;
 };
 
 LCSSettings &Settings();
@@ -68,6 +96,11 @@ void SaveSettings();
 bool WantsExtraWorldMemory();
 // Turns PPSSPP's "Save new textures" on if dumpTextures is set. Never turns it off.
 void ApplyTextureDump();
+// The PSP system language the game is told at boot (sceUtilityGetSystemParamInt), from `language`.
+int SystemLanguageForGame();
+// Rows that stand in for a part of a PPSSPP setting (the FPS counter's bit) read it again. The
+// front end calls this before building a page.
+void RefreshOptionProxies();
 
 // --- The front end's option table ---
 //
@@ -147,6 +180,10 @@ struct Option {
 	// How the value reads. For a Float, null shows its 0-100 position in the range (and the menu
 	// draws blocks); for an Int, null draws blocks instead of the number.
 	const char *format;
+
+	// How many blocks the strip draws; 0 is ten. An Int whose range is fewer steps than ten says so,
+	// so that one press always lights exactly one more block (brightness has eight).
+	int blocks;
 
 	// The compiled-in value, captured when the table is built (before any ini is read), so
 	// RESTORE DEFAULTS restores what the code shipped with. External rows pass theirs explicitly.

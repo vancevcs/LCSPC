@@ -47,9 +47,9 @@ in both games. Debug -> LCS -> Input lists it.
 | Middle mouse | lock on (the game's R, no free aim) | | |
 | Space | jump | handbrake | select |
 | Left Shift | sprint | (claimed, does nothing: PPSSPP's rapid fire) | |
-| F | enter vehicle / hang up | exit / hang up | |
-| Q / E | previous / next weapon (target when locked on) | look left / right (hold for drive-by) | |
-| mouse wheel | next / previous weapon | next / previous station | |
+| F | enter vehicle / hang up | exit / hang up | map: place / remove the marker |
+| Q / E | previous / next weapon (target when locked on) | look left / right, and the drive-by to that side | map: zoom out / in |
+| mouse wheel | next / previous weapon | next / previous station | map: zoom |
 | R / T | | previous / next station | |
 | H | | horn | |
 | C | look behind | look behind | |
@@ -58,7 +58,7 @@ in both games. Debug -> LCS -> Input lists it.
 | V | camera mode | camera mode | |
 | G | side missions on / off | side missions on / off | |
 | Enter | pause menu | pause menu | select |
-| Backspace | | | back |
+| Backspace | | | back (on a page this fork opened: back to this fork's menu) |
 
 Escape, F-keys and everything not in the table stay PPSSPP's.
 
@@ -77,6 +77,27 @@ Escape, F-keys and everything not in the table stay PPSSPP's.
   real pad or PPSSPP's own mapping of the same button isn't cancelled. The stick is set while a
   movement key is held and centred once when the last is released.
 - **The wheel** becomes a 4-vblank d-pad press with a 2-vblank gap per notch, queued.
+
+## The drive-by on Q and E
+
+The game turns the gun out of the window only with L or R held **and** the stick pushed to that
+side (reported: Q alone looked left, Q + A aimed). So in a vehicle Q also pushes the stick fully
+left and E fully right (`kDriveByKeys`), and fire is the only other key a drive-by needs. While one
+of them is held it decides the stick's x on its own (Q with D held still aims left); both together
+is no side. Measured on the car fixture with the SMG chosen on foot: Q held put L at 255 and the
+stick at -128 in `NewState`, and Q + left mouse fired out of the driver's window (ammo 150 -> 136).
+E puts R and +126 there, but the game didn't fire to the right in that fixture, where Vincenzo sits
+in the passenger seat; not tried with that seat empty. The car steers with the stick as it did with
+Q + A.
+
+## The game's own menu
+
+With the pause menu up the context is Menu (above). On a page this fork's menu opened (MAP, BRIEF,
+STATS: front-end.md "The game's own pages"), Backspace posts PPSSPP's pause instead of pressing
+Circle, which would lift the focus to the tab strip the bridge keeps hidden; Escape already is the
+pause. The map's controls are on keys: Q / E and the wheel are L / R (zoom), F is Square (the target
+marker), Enter is Cross (the legend). While the bridge itself is pressing buttons, the player's keys
+and stick stand down (`FrontEndDriving`), as for a cheat.
 
 ## Mouse look on foot: taking the camera over
 
@@ -165,6 +186,6 @@ Three traps:
   first-person weapons (modes 7/8/34/45/46).
 - Gamepads: the layer only claims keyboard and mouse; a pad goes to PPSSPP's mapper with the PSP
   layout.
-- Rebinding, a walk modifier, direct weapon selection by number.
+- A walk modifier, direct weapon selection by number.
 - The help text still names PSP buttons; VCS rewrote its GXT tokens to key names
   (`Tools/vcsgxtkeys.py` in the VCS fork). The token table above is where that starts.

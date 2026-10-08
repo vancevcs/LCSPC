@@ -39,6 +39,10 @@ NOTICE line, and Debug -> LCS shows the reason.
 | `CreatePauseScreen()` | the three `GamePauseScreen` pushes in `UI/EmuScreen.cpp` | the LCS front end over LCS, PPSSPP's pause screen for everything else (front-end.md) |
 | `FontFamily::Display` | `Common/Render/Text/Font.h`, a row in `g_fontDescs` (`draw_text.cpp`) | Pricedown for the menu at the same time as the UI sans: one face per family, so a third family |
 | `UISound::LCS_*` | `Common/UI/Root.h`, `LoadDefaultSample` in `UI/BackgroundAudio.cpp` | the game's own menu sounds, added rather than swapped in so PPSSPP's menus never play them |
+| `LCS::PeekSaveDialog()` | `Core/HLE/sceUtility.cpp` (the dialog is file-static there) and `PSPSaveDialog::LCSPeek` | what the firmware's savedata dialog shows, read-only, so the bridge can drive a load or a save closed-loop (front-end.md) |
+| the language the game is told | `sceUtilityGetSystemParamInt`'s `INT_LANGUAGE` arm | LCS picks its text from the PSP's system language at boot; the Language row decides it for LCS only |
+| the curtain's key gate | `NativeKey`, after the screen manager check | while a sequence walks the game's menu, key presses are swallowed; releases go through |
+| `CreatePauseScreen`, `LCSMenuDue`, `DrawLCSOverlay` | EmuScreen's pause sites, `update`, `renderUI` (and `hasVisibleUI`, `deviceLost`) | the pause may close the game's own menu instead of opening ours; ours comes back after Back from a game page; the curtain and the hint line over the game |
 
 ## Files
 
@@ -53,6 +57,9 @@ Core/LCS/            no ImGui, UI or renderer dependencies
   LCSInput           keyboard and mouse by context; mouse look on foot (input.md)
   LCSChaseCam        the camera on foot and in vehicles: two hooks and a program in CCamera::Process (chase-camera.md)
   LCSFreeAim         mouse free aim: the gun target, the camera's angles and a hook on the player's shot (free-aim.md)
+  LCSFrontEnd        the bridge into the game's own menu: its pages, load, new game, the auto-save,
+                     the curtain, the game's own settings (front-end.md)
+  LCSSaveDialog.h    what the firmware's savedata dialog shows (filled in by PSPSaveDialog)
   LCSMips.h          encoders for programs written into PSP memory
 GPU/Common/LCSSmaa  SMAA over the world before the HUD, Vulkan only (anti-aliasing.md)
 UI/ImDebugger/ImLCS  the Debug -> LCS window (state, table, input, aim, PSP pad, camera, scratchpad)
@@ -69,7 +76,8 @@ Tools/lcsws.py       WebSocket debugger client: read, write, watch, press
 ```
 
 Tick order: base check (first tick only) -> `FrameRateTick` -> `InstallChaseCam` ->
-`InstallFreeAim` -> `UpdateSharedState` -> `InputTick` (context, buttons, stick, the pad panel). The mouse is applied from
+`InstallFreeAim` -> `UpdateSharedState` -> `FrontEndTick` (the bridge decides its presses) ->
+`InputTick` (context, buttons, stick, the pad panel, the bridge's presses). The mouse is applied from
 `OnFrameBoundary`, not the tick; the chase camera's hooks run inside the game's camera update.
 
 ## Threads

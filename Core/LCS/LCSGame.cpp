@@ -28,6 +28,7 @@
 #include "Core/LCS/LCSChaseCam.h"
 #include "Core/LCS/LCSFrameRate.h"
 #include "Core/LCS/LCSFreeAim.h"
+#include "Core/LCS/LCSFrontEnd.h"
 #include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSSettings.h"
@@ -62,6 +63,7 @@ void Init() {
 	ClearState();
 	FrameRateReset();
 	ResetInput();
+	FrontEndReset();
 
 	g_discID = g_paramSFO.GetDiscID();
 	g_discVersion = g_paramSFO.GetValueString("DISC_VERSION");
@@ -128,6 +130,7 @@ void Shutdown() {
 	if (g_active) {
 		RemoveChaseCam();
 		RemoveFreeAim();
+		FrontEndReset();
 	}
 	ClearState();
 	FrameRateReset();
@@ -163,6 +166,8 @@ void Tick() {
 	InstallChaseCam();
 	InstallFreeAim();
 	UpdateSharedState();
+	// Before the input: it decides the presses InputTick applies.
+	FrontEndTick();
 	InputTick(GetState());
 }
 

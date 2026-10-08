@@ -307,6 +307,103 @@ enum LCSPadField : u32 {
 	kPadCross = 0x28, kPadCircle = 0x2a, kPadLeftShock = 0x2c, kPadRightShock = 0x2e,
 };
 
+// --- The game's front end (LCSFrontEnd, docs/lcs/front-end.md "The game's own pages") ---
+//
+// FrontEndMenuManager is a GTA III-style menu: a static page table and a few indices into it, not
+// VCS's named widget tree. Read from its input handler (0x08adcad4) and its draw (0x08adf724).
+inline constexpr u32 kLCSFrontEnd = 0x08B8EE20;
+inline constexpr u32 kLCSFeTabOffset = 0x000;         // s32: the tab the strip is on, 1..8
+inline constexpr u32 kLCSFeActiveOffset = 0x131;      // u8: the menu is up (LCSAddr::MenuActive)
+inline constexpr u32 kLCSFeSaveRequestOffset = 0x46b; // u8: activate_save_menu (03DD) sets it
+inline constexpr u32 kLCSFePageOffset = 0x564;        // s32: the page, an index into the table
+inline constexpr u32 kLCSFeRowOffset = 0x568;         // s32: the selected entry on the page
+inline constexpr u32 kLCSFeInPageOffset = 0x590;      // u8: 0 while the tab strip has focus
+// The menu takes no input until these say so (measured: ~0.3 s after it opens, ~0.1 s after a tab
+// change): +0x141 is set once the d-pad and stick are let go and the fade at +0x18 is done (every
+// direction getter, 0x08ad954c.., returns 0 until then), and +0x584 is the page's own fade-in.
+inline constexpr u32 kLCSFeInputReadyOffset = 0x141;  // u8
+inline constexpr u32 kLCSFeFadeOffset = 0x018;        // s32, 255 when done
+inline constexpr u32 kLCSFePageFadeOffset = 0x584;    // s32, 255 when done
+// The page table at 0x08b316b4, 0x116 bytes a page: a GXT key, then 15 entries of 0x12 (an action,
+// a key, a target page, x, y, alignment). The pages the bridge goes to:
+inline constexpr int kLCSPageStats = 0;
+inline constexpr int kLCSPageGame = 1;         // LOAD GAME, NEW GAME, DELETE SAVE DATA, RESET
+inline constexpr int kLCSPageBrief = 2;
+inline constexpr int kLCSPageMap = 7;
+inline constexpr int kLCSPageNewGameAsk = 9;   // "start a new game?": text, NO, YES
+inline constexpr int kLCSPageLoadAsk = 10;     // "load over this game?": text, NO, YES (action 2)
+inline constexpr int kLCSPageSaveList = 12;    // the firmware's save list is up over this
+// The rows on those pages: LOAD GAME and NEW GAME on the Game page; NO and YES on the question.
+inline constexpr int kLCSRowLoadGame = 0;
+inline constexpr int kLCSRowNewGame = 1;
+inline constexpr int kLCSRowAskYes = 2;
+// The tab strip: per tab (1..8) [up, down, left, right, -, label], -1 where nothing is that way.
+// Measured: tabs 1-5 map, brief, game, stats, controls along the top, 6-8 audio, display,
+// multiplayer below; right wraps within a row, up and down change rows. The language at
+// kLCSLanguage == 4 (Spanish) uses the second table, which has the controls tab last.
+inline constexpr u32 kLCSTabGrid = 0x08B5905C;
+inline constexpr u32 kLCSTabGridSpanish = 0x08B59134;
+inline constexpr u32 kLCSTabGridStride = 0x18;
+inline constexpr int kLCSTabCount = 8;
+// Which page each tab shows (the input handler's switch), in each table.
+inline constexpr int kLCSTabPage[kLCSTabCount + 1] = { -1, 7, 2, 1, 0, 3, 4, 5, 14 };
+inline constexpr int kLCSTabPageSpanish[kLCSTabCount + 1] = { -1, 7, 2, 1, 0, 4, 5, 14, 3 };
+// The button hints along the bottom: `jal 0x08adf0c0`, the only call to what draws them. Taken out
+// while the bridge shows a page; the tabs are already gone once a page has focus (the strip is
+// only drawn while +0x590 is 0).
+inline constexpr LCSCodeWord kLCSMenuHintsCall = { 0x08AE5114, 0x0E2B7C30, 0x00000000 };
+
+// register_mission_passed (031D, 0x08a24740) copies the mission's GXT key here (8 bytes) and adds
+// one to the counter; register_oddjob_mission_passed (059A) adds one and leaves the key. The key is
+// saved and loaded (0x088b253c), the counter is not (zeroed at 0x08845840), so "the counter rose
+// and the key changed" is a story mission passed and nothing else.
+inline constexpr u32 kLCSLatestMissionKey = 0x08B5E398;
+inline constexpr u32 kLCSMissionsPassed = 0x08B5E2C0;
+
+// The script space: a pointer to it, and global N at [ptr] + N * 4 (GetPointerToScriptVariable,
+// 0x08956f38: an operand byte 0xcc-0xe5 is a global, (byte - 0xcc) << 8 | next).
+inline constexpr u32 kLCSScriptSpacePtr = 0x08B38D7C;
+// What the safe house's save routine (MAIN.SCM 0x176d5) sets before 03DD activate_save_menu, and
+// which a save made anywhere else must set too (front-end.md "What a save is made of"):
+inline constexpr u32 kLCSGlobalFromSave = 6;      // 0 in a save loads into the opening mission (0x6933)
+inline constexpr u32 kLCSGlobalRestartX = 7;      // $7..$9 = $537..$539
+inline constexpr u32 kLCSGlobalSafehouseX = 537;  // the safe house the load path creates the player at
+inline constexpr u32 kLCSGlobalOnMission = 560;   // 1 for the length of the save
+inline constexpr u32 kLCSGlobalArmedWeapon = 158; // the load path (INITSAV, 0x48838) gives these back
+inline constexpr u32 kLCSGlobalArmour = 160;
+// The ammo the routine stores per weapon type, and where: give_player weapon N ammo $global.
+struct LCSSavedWeapon {
+	u8 type;
+	u16 global;
+};
+inline constexpr LCSSavedWeapon kLCSSavedWeapons[] = {
+	{ 36, 124 }, { 1, 125 }, { 2, 126 }, { 7, 127 }, { 3, 128 }, { 4, 129 }, { 6, 130 },
+	{ 8, 131 }, { 10, 132 }, { 5, 133 }, { 9, 134 }, { 11, 135 }, { 12, 136 }, { 15, 137 },
+	{ 14, 138 }, { 13, 139 }, { 17, 140 }, { 18, 141 }, { 19, 142 }, { 20, 143 }, { 21, 144 },
+	{ 22, 145 }, { 24, 146 }, { 23, 147 }, { 25, 148 }, { 27, 149 }, { 26, 150 }, { 30, 151 },
+	{ 32, 152 }, { 31, 153 }, { 33, 154 }, { 28, 155 }, { 29, 156 },
+};
+// A CWeapon's total ammo (get_ammo_in_player_weapon, 041E, reads +0xc) and the ped's armour
+// (get_char_armour, 04E2: a float, truncated).
+inline constexpr u32 kLCSWeaponAmmoOffset = 0x0c;
+inline constexpr u32 kLCSPedArmourOffset = 0x4bc;
+
+// The game's own settings, as its Display and Audio pages write them (0x08ada240, 0x08ad9f7c) and a
+// save restores them (0x088b21a4). Each volume is two values: the preference the page shows and the
+// save keeps (s32, 0..127), and the byte the mixer reads (the page's setter writes it; nothing
+// recomputes it from the preference).
+inline constexpr u32 kLCSBrightness = 0x08B59C68;   // s32, 128..384 in 32s; 288 as shipped
+inline constexpr u32 kLCSSubtitles = 0x08B59C6C;    // u8
+inline constexpr u32 kLCSHudOn = 0x08B59C4A;        // u8
+inline constexpr u32 kLCSRadarMode = 0x08B59C4C;    // s32, 0..2
+inline constexpr u32 kLCSMusicVolume = 0x08B59C7C;  // s32
+inline constexpr u32 kLCSSfxVolume = 0x08B59C78;    // s32
+inline constexpr u32 kLCSMusicLevel = 0x08B89D95;   // u8, cAudioManager's (0x08b89d90 + 5)
+inline constexpr u32 kLCSSfxLevel = 0x08B89D94;     // u8 (+ 4)
+// The text language, 0..4 English, French, German, Italian, Spanish. Set once at boot from the
+// PSP's system language (0x089c0e28 asks sceUtilityGetSystemParamInt(8)) and not saved.
+inline constexpr u32 kLCSLanguage = 0x08B59C9C;
+
 // How to interpret the bytes at an address.
 enum class LCSAddrType {
 	U8,

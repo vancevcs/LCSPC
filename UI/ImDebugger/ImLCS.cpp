@@ -31,6 +31,7 @@
 #include "Core/LCS/LCSChaseCam.h"
 #include "Core/LCS/LCSFrameRate.h"
 #include "Core/LCS/LCSFreeAim.h"
+#include "Core/LCS/LCSFrontEnd.h"
 #include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSMemory.h"
@@ -167,6 +168,21 @@ void ImLCSWindow::DrawStatus() {
 	ImGui::SameLine();
 	ImGui::TextDisabled("(PPSSPP's Save new textures: %s; ticked turns it on at every boot)",
 		g_Config.bSaveNewTextures ? "on" : "off");
+
+	// The bridge into the game's own menu (LCSFrontEnd): what it is doing, and the auto-save watch.
+	static const char *kCurtains[] = { "none", "LOADING", "SAVING", "menu" };
+	char mission[16];
+	LCS::LatestMissionKey(mission, sizeof(mission));
+	ImGui::Text("Front end: %s; game's menu %s%s, curtain %s", LCS::FrontEndStatus(),
+		LCS::GameMenuUp() ? "up" : "closed", LCS::BridgeOwnsMenu() ? " (ours)" : "",
+		kCurtains[(int)LCS::ActiveCurtain()]);
+	const int delay = LCS::AutoSaveDelayLeft();
+	ImGui::Text("Last mission %s; auto-save %s (slot %d)", mission[0] ? mission : "-",
+		delay >= 0 ? "pending" : "idle", LCS::Settings().autoSaveSlot);
+	ImGui::SameLine();
+	if (ImGui::SmallButton("Save now")) {
+		LCS::RequestAutoSave();
+	}
 }
 
 void ImLCSWindow::DrawDecodedState() {
