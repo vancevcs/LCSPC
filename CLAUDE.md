@@ -57,6 +57,7 @@ UI/LCSMenuScreen      the front end: the pause menu Escape raises over LCS (asse
 UI/LCSDevInput        dev only: LCS_KEY_PIPE scripted keys and mouse (docs/lcs/input.md "Testing")
 Tools/lcsimage.py, Tools/lcsscm.py   offline EBOOT image and script-opcode map
 Tools/lcsmenuart.py, lcsmenusfx.py    the menu's backdrop and sounds, from the game's own files
+Tools/lcswad.py, lcshd.py   the Android OBB (container, PVR) and the HD texture pipeline
 
 Seams: init/shutdown in `__KernelInit`/`__KernelShutdown`; fingerprint in `__KernelLoadELFFromPtr`;
 tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys and mouse in `NativeKey` /
@@ -96,3 +97,4 @@ Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
 | docs/lcs/world-memory.md | the PSP-2000 partition and the game's own larger streaming heap | touching memory size or draw distance |
 | docs/lcs/anti-aliasing.md | SMAA, where it runs, the world drawn in pieces, the debug views | touching LCSSmaa or the draw engine seam |
 | docs/lcs/front-end.md | the pause menu: look, pages, what is a placeholder, cheats, the input and focus traps | touching the menu or adding a setting |
+| docs/lcs/hd-textures.md | the Android OBB format, matching dumps to HD art, the brightness match, DDS | touching the texture pack or the Android files |

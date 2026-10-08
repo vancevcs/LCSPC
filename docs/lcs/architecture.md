@@ -61,6 +61,8 @@ UI/LCSDevInput       dev only: LCS_KEY_PIPE scripted keys and mouse
 assets/lcs/          the menu's backdrop, Pricedown and sounds, read through g_VFS
 Tools/lcsmenuart.py  the backdrop, cropped from the game's pause-menu texture
 Tools/lcsmenusfx.py  the menu's three sounds, from the disc's front-end sound bank
+Tools/lcswad.py      the Android OBBs: the WAD container, path hashes, ETC1/RGBA4444 PVRs
+Tools/lcshd.py       HD textures: index, match against PPSSPP dumps, bind, DDS (hd-textures.md)
 Tools/lcsimage.py    the EBOOT relocated into a RAM image: find, disasm, callers, xref
 Tools/lcsscm.py      script opcode -> handler address
 Tools/lcsws.py       WebSocket debugger client: read, write, watch, press
