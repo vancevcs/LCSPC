@@ -83,4 +83,19 @@ InputContext CurrentInputContext();
 u32 AppliedButtons();
 bool MouseLookEngaged();
 
+// Mouse movement and wheel notches that arrived while a menu was up. Raw mouse deltas keep coming
+// with the emulator paused and would be spent on the camera at the first frame after; the front
+// end drops them as it closes. UI thread.
+void DropPendingMouse();
+
+// One line of the front end's controls card: an action, the keys and mouse buttons that do it in
+// one context, and the PSP button(s) they press. Built from kKeyMappings and the stick keys, so it
+// cannot disagree with what the keys do. Read-only for now: the card has no rebinding yet.
+struct KeyListingRow {
+	std::string action;
+	std::vector<std::string> keys;
+	std::string psp;
+};
+std::vector<KeyListingRow> KeyListing(InputContext context);
+
 }  // namespace LCS

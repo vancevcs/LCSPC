@@ -337,6 +337,11 @@ static const FontDesc g_fontDescs[] = {
 	{FontFamily::SansSerif, FontStyleFlags::Italic, "Roboto Condensed", "Roboto_Condensed-Italic"},
 	{FontFamily::SansSerif, FontStyleFlags::Light, "Roboto Condensed", "Roboto_Condensed-Light"},
 	{FontFamily::Fixed, FontStyleFlags::Default, "Inconsolata", "Inconsolata-Regular"},
+	// Fork-specific: the LCS front end's face (UI/LCSMenuScreen.cpp). The name is the typographic
+	// family (name-table ID 16), which DirectWrite matches; GDI matches ID 1 ("Pricedown Black") and
+	// substitutes silently. The file is an OTF despite the .ttf the loader appends.
+	{FontFamily::Display, FontStyleFlags::Default, "Pricedown", "lcs/pricedown"},
+	{FontFamily::Display, FontStyleFlags::Bold, "Pricedown", "lcs/pricedown"},
 };
 
 std::map<FontFamily, std::string> g_fontOverrides;

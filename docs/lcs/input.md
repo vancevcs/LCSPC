@@ -147,6 +147,8 @@ Three traps:
 - **The pipe runs per host frame: 30 Hz at the game's 30 fps, 60 at 60.** 25 `look` + `wait 1`
   pairs take 1.67 s at 30; measure after that, or the tail lands in the next measurement. Hours
   went into "lost" mouse input that was a too-short wait.
+- **Under a menu, only releases reach the layer**, from the pipe as from a real keyboard
+  (front-end.md "Two traps"); a press goes to the screen.
 - **Pipe keys skip NativeKey's ImGui filter.** With an ImGui window focused (one click on
   Debug -> LCS), NativeKey keeps keyboard keys from the game; a test then saw F and S do nothing.
   The pipe hands keys to `LCS::HandleHostKey` first, and only the ones it doesn't claim go through

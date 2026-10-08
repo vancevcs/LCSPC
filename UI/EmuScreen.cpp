@@ -81,6 +81,7 @@ using namespace std::placeholders;
 #include "UI/BackgroundAudio.h"
 #include "UI/GamepadEmu.h"
 #include "UI/PauseScreen.h"
+#include "UI/LCSMenuScreen.h"  // Fork-specific: CreatePauseScreen
 #include "UI/LoadStateConfirmScreen.h"
 #include "UI/MainScreen.h"
 #include "UI/Background.h"
@@ -535,7 +536,7 @@ void EmuScreen::sendMessage(UIMessage message, const char *value) {
 	// External commands, like from the Windows UI.
 	// This happens on the main thread.
 	if (message == UIMessage::REQUEST_GAME_PAUSE && screenManager()->topScreen() == this) {
-		screenManager()->push(new GamePauseScreen(gamePath_, bootPending_));
+		screenManager()->push(CreatePauseScreen(gamePath_, bootPending_));  // Fork-specific
 	} else if (message == UIMessage::REQUEST_GAME_STOP) {
 		// We will push MainScreen in update().
 		if (bootPending_) {
@@ -664,7 +665,7 @@ void EmuScreen::sendMessage(UIMessage message, const char *value) {
 				// use this as the fallback way to get into the menu.
 				// Don't do it on the first resume though, in case we launch directly into emuscreen, like from a frontend - see #18926
 				if (!equals(value, "first")) {
-					screenManager()->push(new GamePauseScreen(gamePath_, bootPending_));
+					screenManager()->push(CreatePauseScreen(gamePath_, bootPending_));  // Fork-specific
 				}
 			}
 		}
@@ -1431,7 +1432,7 @@ void EmuScreen::update() {
 
 	if (pauseTrigger_) {
 		pauseTrigger_ = false;
-		screenManager()->push(new GamePauseScreen(gamePath_, bootPending_));
+		screenManager()->push(CreatePauseScreen(gamePath_, bootPending_));  // Fork-specific
 	}
 
 	if (!PSP_IsInited())

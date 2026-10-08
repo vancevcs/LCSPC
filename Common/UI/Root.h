@@ -54,6 +54,12 @@ enum class UISound {
 	TOGGLE_OFF,
 	ACHIEVEMENT_UNLOCKED,
 	LEADERBOARD_SUBMITTED,
+	// Fork-specific: the LCS front end's own three, from the game's sound bank
+	// (Tools/lcsmenusfx.py). Added rather than swapped into SELECT/BACK so PPSSPP's own menus never
+	// play them; only UI/LCSMenuScreen.cpp does.
+	LCS_HIGHLIGHT,
+	LCS_SELECT,
+	LCS_BACK,
 	COUNT,
 };
 

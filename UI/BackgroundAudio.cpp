@@ -687,6 +687,10 @@ void SoundEffectMixer::LoadDefaultSample(UI::UISound sound) {
 	case UI::UISound::TOGGLE_OFF: filename = "sfx_toggle_off.wav"; break;
 	case UI::UISound::ACHIEVEMENT_UNLOCKED: filename = "sfx_achievement_unlocked.wav"; break;
 	case UI::UISound::LEADERBOARD_SUBMITTED: filename = "sfx_leaderbord_submitted.wav"; break;
+	// Fork-specific: the LCS front end's sounds, see Tools/lcsmenusfx.py.
+	case UI::UISound::LCS_HIGHLIGHT: filename = "lcs/sfx_fe_highlight.wav"; break;
+	case UI::UISound::LCS_SELECT: filename = "lcs/sfx_fe_select.wav"; break;
+	case UI::UISound::LCS_BACK: filename = "lcs/sfx_fe_back.wav"; break;
 	default:
 		return;
 	}
@@ -734,6 +738,10 @@ void SoundEffectMixer::LoadSamplesOnThread() {
 	LoadDefaultSample(UI::UISound::CONFIRM);
 	LoadDefaultSample(UI::UISound::TOGGLE_ON);
 	LoadDefaultSample(UI::UISound::TOGGLE_OFF);
+	// Fork-specific: the LCS front end's sounds.
+	LoadDefaultSample(UI::UISound::LCS_HIGHLIGHT);
+	LoadDefaultSample(UI::UISound::LCS_SELECT);
+	LoadDefaultSample(UI::UISound::LCS_BACK);
 
 	if (!g_Config.sAchievementsUnlockAudioFile.empty()) {
 		UpdateSample(UI::UISound::ACHIEVEMENT_UNLOCKED, Sample::Load(g_Config.sAchievementsUnlockAudioFile));

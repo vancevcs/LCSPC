@@ -17,10 +17,14 @@
 
 #pragma once
 
+#include <string>
+#include <vector>
+
 // The LCS layer's own settings, in PSP/SYSTEM/lcs.ini, section [Settings]. Read when the layer
 // activates, written when one is changed. Hand-editable; a missing file means defaults.
 //
-// Read and written on the emu thread (LCS::Tick and the ImGui debugger).
+// Read and written on the emu thread (LCS::Tick and the ImGui debugger), and on the UI thread by
+// the front end (UI/LCSMenuScreen), which only runs while the emulator is paused.
 
 namespace LCS {
 
@@ -58,5 +62,106 @@ void SaveSettings();
 // lcs.ini's WorldMemory, read straight from the file: the partition is sized while the ISO loads,
 // before the layer activates or loads its settings.
 bool WantsExtraWorldMemory();
+
+// --- The front end's option table ---
+//
+// The VCS fork's port of re3's CFO ("Custom Frontend Options"): a menu row is the variable it
+// edits plus the ini key it saves to, so adding an option is one row in one table - no renderer
+// change, no switch arm, no new save code. LoadSettings and SaveSettings walk the same table.
+//
+// The table owns names, ranges and persistence; the values stay where they live (LCSSettings,
+// the chase camera's tuning, g_Config). Rows a player has no opinion about stay in the debugger.
+
+enum class OptionType {
+	Bool,
+	Float,
+	Int,     // a number within a range, moved a step at a time
+	Choice,  // an int index into a list of labels
+};
+
+// Which page an option appears on. A page is built by filtering the table, so the order of the
+// rows is the order on screen.
+enum class OptionPage {
+	Mouse,
+	Controller,
+	Aiming,
+	Audio,
+	Graphics,
+	GraphicsAdvanced,  // the graphics rows a player rarely touches, one page down
+	Gameplay,
+};
+
+struct Option {
+	OptionPage page;
+	OptionType type;
+
+	// Stable id, and the key under [Settings] in lcs.ini. Renaming one silently resets that
+	// setting for everyone who has a file. Null for external and placeholder rows.
+	const char *iniKey;
+
+	const char *label;  // the row itself
+	const char *help;   // one line, shown along the bottom while the row is selected
+
+	// Exactly one of these is set, according to type.
+	bool *boolValue;
+	float *floatValue;
+	int *intValue;
+
+	// Choice only: the labels, one per index.
+	const char *const *choices;
+	int numChoices;
+
+	// A setting PPSSPP owns (g_Config, saved by PPSSPP): not loaded or saved here.
+	bool external;
+
+	// A row for something this fork doesn't do yet. It is on its page, drawn greyed, and does
+	// nothing; its value is a stand-in that isn't saved. When the feature lands the row gets a real
+	// variable and an ini key and stops being one.
+	bool placeholder;
+
+	// Called after the value really changed. Null for settings read live.
+	void (*onChange)();
+
+	// Only live while this is true: greyed and inert otherwise.
+	bool *enabledBy;
+
+	// How the value reads, where a label or format can't say it. Null for the rules in ValueText.
+	std::string (*valueText)(const Option &opt);
+
+	// Float only; the same range the debugger window uses.
+	float minValue;
+	float maxValue;
+
+	// Int only. stepInt is one press, and the granularity the block strip snaps to.
+	int minInt;
+	int maxInt;
+	int stepInt;
+
+	// How the value reads. For a Float, null shows its 0-100 position in the range (and the menu
+	// draws blocks); for an Int, null draws blocks instead of the number.
+	const char *format;
+
+	// The compiled-in value, captured when the table is built (before any ini is read), so
+	// RESTORE DEFAULTS restores what the code shipped with. External rows pass theirs explicitly.
+	bool defaultBool;
+	float defaultFloat;
+	int defaultInt;
+};
+
+// Every option, in menu order. Built on first call; LoadSettings calls it first.
+const std::vector<Option> &Options();
+
+// Put one page back to the values the code shipped with.
+void ResetPage(OptionPage page);
+
+// Position of a Float or Int option within its range, 0..1, which is what the blocks draw.
+float GetNormalized(const Option &opt);
+void SetNormalized(const Option &opt, float t);
+// The write paths: clamp, then fire onChange only on a real change.
+void SetInt(const Option &opt, int value);
+void SetBool(const Option &opt, bool value);
+
+// What the right-hand column shows: "ON", "OFF", "63", or a formatted value.
+std::string ValueText(const Option &opt);
 
 }  // namespace LCS

@@ -45,7 +45,7 @@ Core/LCS/ (no ImGui, UI, or renderer dependencies)
   LCSMemory       optional reads; a bad address is never fatal
   LCSState        per-tick decoded state, optional per field
   LCSGame         lifecycle + tick; the only entry point the rest of PPSSPP sees
-  LCSSettings     PSP/SYSTEM/lcs.ini
+  LCSSettings     PSP/SYSTEM/lcs.ini, and the option table the front end is built from
   LCSFrameRate    60 fps (cap + millisecond carry)
   LCSInput        keyboard and mouse by context; mouse look on foot
   LCSChaseCam     the camera on foot and in vehicles, replaced inside CCamera::Process
@@ -53,14 +53,16 @@ Core/LCS/ (no ImGui, UI, or renderer dependencies)
   LCSMips.h       encoders for programs written into PSP memory
 GPU/Common/LCSSmaa    SMAA over the world before the HUD (Vulkan)
 UI/ImDebugger/ImLCS   the "LCS" debugger window (Debug -> LCS)
+UI/LCSMenuScreen      the front end: the pause menu Escape raises over LCS (assets/lcs/)
 UI/LCSDevInput        dev only: LCS_KEY_PIPE scripted keys and mouse (docs/lcs/input.md "Testing")
 Tools/lcsimage.py, Tools/lcsscm.py   offline EBOOT image and script-opcode map
+Tools/lcsmenuart.py, lcsmenusfx.py    the menu's backdrop and sounds, from the game's own files
 
 Seams: init/shutdown in `__KernelInit`/`__KernelShutdown`; fingerprint in `__KernelLoadELFFromPtr`;
 tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys and mouse in `NativeKey` /
 `NativeMouseDelta`; the frame boundary in `sceKernelGetSystemTimeWide`; by-address hooks in
 `Core/HLE/ReplaceTables.*`; the memory partition in `InitMemorySizeForGame`; SMAA in
-`DrawEngineVulkan::Flush`; compat flag in
+`DrawEngineVulkan::Flush`; the pause screen in `CreatePauseScreen` (EmuScreen); compat flag in
 Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
 
 ## Working rules
@@ -93,3 +95,4 @@ Core/Compatibility.* + assets/compat.ini. Full table: docs/lcs/architecture.md.
 | docs/lcs/free-aim.md | the game's free aim, the gun target, the fire hook, measurements, the armed fixtures | touching aiming or shooting |
 | docs/lcs/world-memory.md | the PSP-2000 partition and the game's own larger streaming heap | touching memory size or draw distance |
 | docs/lcs/anti-aliasing.md | SMAA, where it runs, the world drawn in pieces, the debug views | touching LCSSmaa or the draw engine seam |
+| docs/lcs/front-end.md | the pause menu: look, pages, what is a placeholder, cheats, the input and focus traps | touching the menu or adding a setting |

@@ -22,6 +22,10 @@ ENUM_CLASS_BITOPS(FontStyleFlags);
 enum class FontFamily : u8 {
 	SansSerif = 1,
 	Fixed = 2,
+	// Fork-specific: a display face (Pricedown) for the LCS front end's headings and rows, at the
+	// same time as the UI sans. A family maps to exactly one face, so a second face at once means a
+	// second family. Nothing else uses it.
+	Display = 3,
 };
 
 struct FontStyle {

@@ -964,6 +964,7 @@ LOCAL_SRC_FILES := \
   $(SRC)/UI/ChatScreen.cpp \
   $(SRC)/UI/DebugOverlay.cpp \
   $(SRC)/UI/DevScreens.cpp \
+  $(SRC)/UI/LCSMenuScreen.cpp \
   $(SRC)/UI/LCSDevInput.cpp \
   $(SRC)/UI/DriverManagerScreen.cpp \
   $(SRC)/UI/DisplayLayoutScreen.cpp \

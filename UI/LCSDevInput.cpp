@@ -29,10 +29,13 @@
 #include "Common/Log.h"
 #include "Common/StringUtils.h"
 #include "Common/System/NativeApp.h"
+#include "Common/UI/ScreenManager.h"
 #include "Core/KeyMap.h"
 #include "Core/LCS/LCSInput.h"
 #include "Core/SaveState.h"
 #include "UI/LCSDevInput.h"
+
+extern ScreenManager *g_screenManager;  // UI/NativeApp.cpp
 
 static bool ParseDevKey(const std::string &name, InputKeyCode *code, InputDeviceID *device) {
 	*device = DEVICE_ID_KEYBOARD;
@@ -59,11 +62,15 @@ static bool ParseDevKey(const std::string &name, InputKeyCode *code, InputDevice
 	return false;
 }
 
-// To the LCS layer first, as NativeKey would, but without NativeKey's filtering: with an ImGui
-// window focused (a click on Debug -> LCS is enough) NativeKey keeps keyboard keys from the game,
-// and a test then sees nothing happen. Keys the layer doesn't claim go through NativeKey as usual.
+// To the LCS layer first, as NativeKey would, but without NativeKey's ImGui filtering: with an
+// ImGui window focused (a click on Debug -> LCS is enough) NativeKey keeps keyboard keys from the
+// game, and a test then sees nothing happen. Keys the layer doesn't claim go through NativeKey as
+// usual. The screen's own gate is kept: under a screen that passes nothing to the mapper (the LCS
+// menu), only releases reach the layer, exactly as from a real keyboard.
 static void SendDevKey(const KeyInput &key) {
-	if (!LCS::HandleHostKey(key)) {
+	const bool gated = (key.flags & KeyInputFlags::DOWN) && g_screenManager &&
+		g_screenManager->PassInputToMapper() == InputMode::None;
+	if (gated || !LCS::HandleHostKey(key)) {
 		NativeKey(key);
 	}
 }

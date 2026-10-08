@@ -36,6 +36,9 @@ NOTICE line, and Debug -> LCS shows the reason.
 | `LCS::OnFrameBoundary()` | `sceKernelGetSystemTimeWide()`, with `$ra` | the game calls it right after its frame wait, every frame: between frames, the only safe moment to write the camera. Not `sceDisplayWaitVblankStart`, which a frame that has used up the cap skips (input.md) |
 | `lcs_camera_prepare` / `lcs_camera_finish`, `lcs_fire_raycast` / `lcs_fire_raycast_done` | `Core/HLE/ReplaceTables.cpp` entries, plus `GetReplacementFuncIndexByName` / `WriteReplaceInstructionAt` | `REPFLAG_HOOKENTER` hooks installed by address, never by hash, so no other game can match them (chase-camera.md, free-aim.md) |
 | `LCSDevKeyPipeTick()` | `NativeFrame()`, after `g_OSD.Update` | dev only, `LCS_KEY_PIPE` |
+| `CreatePauseScreen()` | the three `GamePauseScreen` pushes in `UI/EmuScreen.cpp` | the LCS front end over LCS, PPSSPP's pause screen for everything else (front-end.md) |
+| `FontFamily::Display` | `Common/Render/Text/Font.h`, a row in `g_fontDescs` (`draw_text.cpp`) | Pricedown for the menu at the same time as the UI sans: one face per family, so a third family |
+| `UISound::LCS_*` | `Common/UI/Root.h`, `LoadDefaultSample` in `UI/BackgroundAudio.cpp` | the game's own menu sounds, added rather than swapped in so PPSSPP's menus never play them |
 
 ## Files
 
@@ -45,7 +48,7 @@ Core/LCS/            no ImGui, UI or renderer dependencies
   LCSMemory          optional reads and checked writes; a bad address is never fatal
   LCSState           per-tick decoded state, optional per field
   LCSGame            lifecycle and tick: the only entry point the rest of PPSSPP calls
-  LCSSettings        PSP/SYSTEM/lcs.ini, loaded when the layer activates
+  LCSSettings        PSP/SYSTEM/lcs.ini, loaded when the layer activates; the front end's option table
   LCSFrameRate       60 fps: frame cap + millisecond carry, re-checked every tick (frame-rate.md)
   LCSInput           keyboard and mouse by context; mouse look on foot (input.md)
   LCSChaseCam        the camera on foot and in vehicles: two hooks and a program in CCamera::Process (chase-camera.md)
@@ -53,7 +56,11 @@ Core/LCS/            no ImGui, UI or renderer dependencies
   LCSMips.h          encoders for programs written into PSP memory
 GPU/Common/LCSSmaa  SMAA over the world before the HUD, Vulkan only (anti-aliasing.md)
 UI/ImDebugger/ImLCS  the Debug -> LCS window (state, table, input, aim, PSP pad, camera, scratchpad)
+UI/LCSMenuScreen     the front end: the pause menu over LCS, its pages, the cheats (front-end.md)
 UI/LCSDevInput       dev only: LCS_KEY_PIPE scripted keys and mouse
+assets/lcs/          the menu's backdrop, Pricedown and sounds, read through g_VFS
+Tools/lcsmenuart.py  the backdrop, cropped from the game's pause-menu texture
+Tools/lcsmenusfx.py  the menu's three sounds, from the disc's front-end sound bank
 Tools/lcsimage.py    the EBOOT relocated into a RAM image: find, disasm, callers, xref
 Tools/lcsscm.py      script opcode -> handler address
 Tools/lcsws.py       WebSocket debugger client: read, write, watch, press

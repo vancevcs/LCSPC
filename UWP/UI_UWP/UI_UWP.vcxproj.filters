@@ -55,6 +55,9 @@
     <ClCompile Include="..\..\UI\DevScreens.cpp">
       <Filter>Screens</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\UI\LCSMenuScreen.cpp">
+      <Filter>Screens</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\UI\LCSDevInput.cpp">
       <Filter>Screens</Filter>
     </ClCompile>
@@ -211,6 +214,9 @@
       <Filter>Screens</Filter>
     </ClInclude>
     <ClInclude Include="..\..\UI\DevScreens.h">
+      <Filter>Screens</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\UI\LCSMenuScreen.h">
       <Filter>Screens</Filter>
     </ClInclude>
     <ClInclude Include="..\..\UI\LCSDevInput.h">

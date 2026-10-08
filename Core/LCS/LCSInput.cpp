@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cmath>
 #include <deque>
 #include <map>
@@ -28,6 +29,7 @@
 #include "Common/Log.h"
 #include "Common/StringUtils.h"
 #include "Core/HLE/sceCtrl.h"
+#include "Core/KeyMap.h"
 #include "Core/LCS/LCSAddresses.h"
 #include "Core/LCS/LCSChaseCam.h"
 #include "Core/LCS/LCSFreeAim.h"
@@ -631,6 +633,94 @@ int PadTapsPending() {
 
 bool MouseLookEngaged() {
 	return g_cameraTakenOver;
+}
+
+void DropPendingMouse() {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	g_mouseDX = 0.0f;
+	g_mouseDY = 0.0f;
+	g_wheelUp = 0;
+	g_wheelDown = 0;
+}
+
+// --- The controls card ---
+
+// What the card calls a key: the names a PC game's controls screen uses, PPSSPP's own where those
+// would do ("LShift" would not).
+static std::string CardKeyName(InputKeyCode key) {
+	switch (key) {
+	case NKCODE_EXT_MOUSEBUTTON_1: return "LMB";
+	case NKCODE_EXT_MOUSEBUTTON_2: return "RMB";
+	case NKCODE_EXT_MOUSEBUTTON_3: return "MMB";
+	case NKCODE_EXT_MOUSEWHEEL_UP: return "WHEEL UP";
+	case NKCODE_EXT_MOUSEWHEEL_DOWN: return "WHEEL DOWN";
+	case NKCODE_SHIFT_LEFT: return "LEFT SHIFT";
+	case NKCODE_CTRL_LEFT: return "LEFT CTRL";
+	case NKCODE_DEL: return "BACKSPACE";
+	case NKCODE_DPAD_UP: return "UP ARROW";
+	case NKCODE_DPAD_DOWN: return "DOWN ARROW";
+	default: {
+		std::string name = KeyMap::GetKeyName(key);
+		std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return (char)toupper(c); });
+		return name;
+	}
+	}
+}
+
+static std::string CardPspName(u32 mask) {
+	static const struct { u32 bit; const char *name; } kNames[] = {
+		{ CTRL_UP, "UP" }, { CTRL_DOWN, "DOWN" }, { CTRL_LEFT, "LEFT" }, { CTRL_RIGHT, "RIGHT" },
+		{ CTRL_CROSS, "CROSS" }, { CTRL_CIRCLE, "CIRCLE" }, { CTRL_SQUARE, "SQUARE" },
+		{ CTRL_TRIANGLE, "TRIANGLE" }, { CTRL_LTRIGGER, "L" }, { CTRL_RTRIGGER, "R" },
+		{ CTRL_START, "START" }, { CTRL_SELECT, "SELECT" },
+	};
+	std::string out;
+	for (const auto &n : kNames) {
+		if (mask & n.bit) {
+			out += out.empty() ? n.name : std::string(" + ") + n.name;
+		}
+	}
+	return out;
+}
+
+std::vector<KeyListingRow> KeyListing(InputContext context) {
+	std::vector<KeyListingRow> rows;
+	// The stick and the camera first, as a controls screen lists them; they are not in the table.
+	if (context == kFoot) {
+		rows.push_back({ "Walk", { "W A S D" }, "STICK" });
+		rows.push_back({ "Look", { "MOUSE" }, "" });
+	} else if (context == kCar) {
+		rows.push_back({ "Steer", { "A / D" }, "STICK" });
+		rows.push_back({ "Lean / aim the water cannon", { "UP ARROW", "DOWN ARROW" }, "STICK" });
+		rows.push_back({ "Look around", { "MOUSE" }, "" });
+	}
+	for (size_t i = 0; i < kKeyMappingCount; i++) {
+		const KeyMapping &m = kKeyMappings[i];
+		if (m.context != context || m.psp == 0) {
+			continue;
+		}
+		auto it = std::find_if(rows.begin(), rows.end(), [&](const KeyListingRow &row) {
+			return row.action == m.description;
+		});
+		if (it == rows.end()) {
+			rows.push_back({ m.description, {}, CardPspName(m.psp) });
+			it = rows.end() - 1;
+		} else if (it->psp.find(CardPspName(m.psp)) == std::string::npos) {
+			it->psp += " / " + CardPspName(m.psp);
+		}
+		it->keys.push_back(CardKeyName(m.key));
+	}
+	// The wheel is one notch per press of the d-pad's left or right, which is the row above it.
+	if (context == kFoot || context == kCar) {
+		for (KeyListingRow &row : rows) {
+			if (row.psp == "RIGHT") {
+				row.keys.push_back(CardKeyName(NKCODE_EXT_MOUSEWHEEL_UP));
+			} else if (row.psp == "LEFT") {
+				row.keys.push_back(CardKeyName(NKCODE_EXT_MOUSEWHEEL_DOWN));
+			}
+		}
+	}
+	return rows;
 }
 
 }  // namespace LCS

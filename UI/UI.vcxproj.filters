@@ -28,6 +28,9 @@
     <ClCompile Include="DevScreens.cpp">
       <Filter>Screens</Filter>
     </ClCompile>
+    <ClCompile Include="LCSMenuScreen.cpp">
+      <Filter>Screens</Filter>
+    </ClCompile>
     <ClCompile Include="LCSDevInput.cpp">
       <Filter>Screens</Filter>
     </ClCompile>
@@ -192,6 +195,9 @@
       <Filter>Screens</Filter>
     </ClInclude>
     <ClInclude Include="DevScreens.h">
+      <Filter>Screens</Filter>
+    </ClInclude>
+    <ClInclude Include="LCSMenuScreen.h">
       <Filter>Screens</Filter>
     </ClInclude>
     <ClInclude Include="LCSDevInput.h">
