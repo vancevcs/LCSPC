@@ -264,6 +264,11 @@ inline constexpr u32 kLCSFireRaycastCallOp = 0x0E214862;
 inline constexpr u32 kLCSFireRaycastDone = 0x088521DC;
 inline constexpr u32 kLCSFireRaycastDoneOp = 0x8FBF0040;
 
+// The reserve MainMemoryManager (0x08aa4af8) leaves out of sceKernelMaxFreeMemSize, which is what
+// the streaming heap (0x08a0b794) is then built from, less 512KB: 5MB as shipped (0x4e6666), 12MB
+// when more than 22MB is free (docs/lcs/world-memory.md).
+inline constexpr u32 kLCSMainMemoryReserve = 0x08B5666C;
+
 // CVehicle::m_vehType. FindPlayerTrain (0x089d5860) compares it with 2.
 inline constexpr u32 kLCSVehicleTypeOffset = 0x344;
 

@@ -49,6 +49,7 @@
 #include "Core/System.h"
 #include "Core/PSPLoaders.h"
 #include "Core/HLE/sceKernelModule.h"
+#include "Core/LCS/LCSSettings.h"  // Fork-specific
 
 static void UseLargeMem(int memsize) {
 	if (memsize != 1) {
@@ -186,6 +187,16 @@ void InitMemorySizeForGame() {
 		Memory::g_MemorySize = entry.memorySize;
 		g_DoubleTextureCoordinates = entry.doubleTextureCoordinates;
 		break;
+	}
+	// Fork-specific: GTA: Liberty City Stories v3.00 has a PSP-2000 path of its own - with more than
+	// 22MB free it reserves 12MB instead of 5MB for its streaming heap (docs/lcs/world-memory.md).
+	// A PSP-2000 partition is all it takes. Opt-in, because a savestate from one partition size
+	// will not load under another.
+	if (gameID == "ULUS10041" && g_paramSFO.GetValueString("DISC_VERSION") == "3.00" && !g_RemasterMode &&
+		Memory::g_PSPModel != PSP_MODEL_FAT && Memory::g_MemorySize < Memory::RAM_DOUBLE_SIZE &&
+		LCS::WantsExtraWorldMemory()) {
+		Memory::g_MemorySize = Memory::RAM_DOUBLE_SIZE;
+		NOTICE_LOG(Log::Loader, "LCS: a PSP-2000 partition, for the game's own larger streaming heap");
 	}
 	if (g_RemasterMode) {
 		INFO_LOG(Log::Loader, "HDRemaster found, using increased memory");

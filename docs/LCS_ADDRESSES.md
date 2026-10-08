@@ -177,9 +177,10 @@ LCS sizes its world from free memory, the lever that decided VCS's draw distance
 - Both have a fixed-size branch (`0xc9a400` and `0x47ac00`) behind the byte `0x08b56668`, which
   nothing writes.
 
-So unlike VCS (one fixed reserve), LCS already has a large-memory path in the retail code. What
-PPSSPP's partition gives it, and whether a larger streaming heap changes anything visible, is not
-measured yet.
+So unlike VCS (one fixed reserve), LCS already has a large-memory path in the retail code.
+Measured ([lcs/world-memory.md](lcs/world-memory.md)): on the retail partition the reserve reads
+4.90 MB and the heap 4.48 MB; with a PSP-2000 partition 12.00 and 11.47 MB. The heap object is at
+`0x08b89870` (size at +0, +0x14 moves with what is loaded).
 
 ### TimeInMs `0x08b5e144`, TimeStep `0x08b5e148`, FrameCounter `0x08b5e174` - live
 

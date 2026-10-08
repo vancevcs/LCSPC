@@ -47,10 +47,21 @@ void LoadSettings() {
 	section->Get("VehicleChaseCamera", &g_settings.vehicleChaseCamera);
 	section->Get("FootChaseCamera", &g_settings.footChaseCamera);
 	section->Get("MouseFreeAim", &g_settings.freeAim);
+	section->Get("WorldMemory", &g_settings.worldMemory);
 	NOTICE_LOG(Log::System, "LCS: settings loaded (FrameRate60 = %s, KeyboardMouse = %s, MouseLook = %s, MouseSensitivity = %g, VehicleChaseCamera = %s, FootChaseCamera = %s)",
 		g_settings.frameRate60 ? "true" : "false", g_settings.keyboardMouse ? "true" : "false",
 		g_settings.mouseLook ? "true" : "false", g_settings.mouseSensitivity,
 		g_settings.vehicleChaseCamera ? "true" : "false", g_settings.footChaseCamera ? "true" : "false");
+}
+
+bool WantsExtraWorldMemory() {
+	IniFile ini;
+	if (!ini.Load(SettingsPath())) {
+		return false;
+	}
+	const Section *section = ini.GetSection("Settings");
+	bool value = false;
+	return section && section->Get("WorldMemory", &value) && value;
 }
 
 void SaveSettings() {
@@ -65,6 +76,7 @@ void SaveSettings() {
 	section->Set("VehicleChaseCamera", g_settings.vehicleChaseCamera);
 	section->Set("FootChaseCamera", g_settings.footChaseCamera);
 	section->Set("MouseFreeAim", g_settings.freeAim);
+	section->Set("WorldMemory", g_settings.worldMemory);
 	if (!ini.Save(SettingsPath())) {
 		ERROR_LOG(Log::System, "LCS: could not write %s", SettingsPath().c_str());
 	}

@@ -25,6 +25,7 @@
 #include "Core/Config.h"
 #include "Core/HLE/sceCtrl.h"
 #include "Core/KeyMap.h"
+#include "Core/MemMap.h"
 #include "Core/System.h"
 #include "Core/LCS/LCSAddresses.h"
 #include "Core/LCS/LCSChaseCam.h"
@@ -133,6 +134,16 @@ void ImLCSWindow::DrawStatus() {
 	}
 	ImGui::SameLine();
 	ImGui::TextDisabled("(%s)", LCS::FrameRateIs60() ? "cap and carry in" : "stock");
+	ImGui::SameLine();
+	bool worldMemory = LCS::Settings().worldMemory;
+	if (ImGui::Checkbox("World memory", &worldMemory)) {
+		LCS::Settings().worldMemory = worldMemory;
+		LCS::SaveSettings();
+	}
+	ImGui::SameLine();
+	const u32 reserve = LCS::ReadU32(LCS::kLCSMainMemoryReserve).value_or(0);
+	ImGui::TextDisabled("(%d MB partition, %.1f MB reserve; takes a restart)", (int)(Memory::g_MemorySize >> 20),
+		reserve / (1024.0f * 1024.0f));
 }
 
 void ImLCSWindow::DrawDecodedState() {

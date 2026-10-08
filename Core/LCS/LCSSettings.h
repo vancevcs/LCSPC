@@ -44,10 +44,17 @@ struct LCSSettings {
 	// Right mouse with a gun drops straight into the game's free aim, the mouse aims and the shot
 	// goes where the reticle is (LCSFreeAim). Off leaves R as the game's lock-on.
 	bool freeAim = true;
+	// A PSP-2000 memory partition, which the game answers with a 12MB streaming reserve instead of
+	// 5MB. Read at boot (WantsExtraWorldMemory), so a change takes a restart; and savestates made
+	// with it one way don't load the other.
+	bool worldMemory = false;
 };
 
 LCSSettings &Settings();
 void LoadSettings();
 void SaveSettings();
+// lcs.ini's WorldMemory, read straight from the file: the partition is sized while the ISO loads,
+// before the layer activates or loads its settings.
+bool WantsExtraWorldMemory();
 
 }  // namespace LCS

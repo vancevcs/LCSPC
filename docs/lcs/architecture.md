@@ -28,6 +28,7 @@ NOTICE line, and Debug -> LCS shows the reason.
 | `LCS::Tick()` | `hleEnterVblank()`, after `UpdateAutoMovements` | once per vblank on the emu thread, where PSP memory is safe to read. Not `__DisplayVblankBeginCallback`, which only fires for threads waiting in `sceDisplayWaitVblankCB` |
 | `LCS::Shutdown()` | `__KernelShutdown()`, before `__CtrlShutdown` | so held buttons can be released while sceCtrl is alive |
 | compat flag | `Core/Compatibility.h/.cpp`, `assets/compat.ini` | |
+| `LCS::WantsExtraWorldMemory()` | `InitMemorySizeForGame()` in `Core/PSPLoaders.cpp` | the partition is sized while the ISO loads, before `LCS::Init`; it reads `lcs.ini` itself (world-memory.md) |
 | Debug -> LCS | `UI/ImDebugger/ImDebugger.cpp/.h` (menu item, draw call, `lcsOpen` ini key) | |
 | `LCS::HandleHostKey()` | `NativeKey()`, in the `passKeyThrough` branch, before `g_controlMapper.Key` | a claimed key must not also reach the mapper |
 | `LCS::HandleMouseDelta()` | `NativeMouseDelta()`, after the `bMouseControl` check, skipped while ImGui wants the mouse | mouse look only with PPSSPP's mouse control on |
