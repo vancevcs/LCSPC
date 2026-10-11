@@ -617,6 +617,16 @@ void ImLCSWindow::DrawAim() {
 		ImGui::Text("Last hit %.2f %.2f %.2f, %.3f off the camera's centre line", s.lastHit[0], s.lastHit[1],
 			s.lastHit[2], s.lastHitOffLine);
 	}
+	ImGui::Separator();
+	if (ImGui::SliderFloat("Scope sensitivity", &settings.scopedSensitivity, 0.0005f, 0.01f, "%.4f")) {
+		LCS::SaveSettings();
+	}
+	if (s.scopeActive) {
+		ImGui::Text("Scope: mode %d, FOV %.1f, zoom target %.1f   mouse frames %llu", s.scopeMode, s.scopeFov,
+			s.scopeZoomTarget, (unsigned long long)s.scopeFrames);
+	} else {
+		ImGui::Text("Scope: -   mouse frames %llu", (unsigned long long)s.scopeFrames);
+	}
 }
 
 void ImLCSWindow::Draw(ImConfig &cfg) {

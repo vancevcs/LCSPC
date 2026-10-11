@@ -49,7 +49,7 @@ Core/LCS/ (no ImGui, UI, or renderer dependencies)
   LCSFrameRate    60 fps (cap + millisecond carry)
   LCSInput        keyboard and mouse by context; mouse look on foot
   LCSChaseCam     the camera on foot and in vehicles, replaced inside CCamera::Process
-  LCSFreeAim      mouse free aim: gun target + camera angles, and the player's shot down the reticle
+  LCSFreeAim      mouse free aim: gun target + camera angles, the shot down the reticle; the scope
   LCSFrontEnd     the bridge into the game's own menu: map/brief/stats, load, new game, auto-save,
                   the loading curtain, the game's own settings (LCSSaveDialog.h: the savedata peek)
   LCSMips.h       encoders for programs written into PSP memory
@@ -99,7 +99,7 @@ docs/lcs/architecture.md.
 | docs/lcs/frame-rate.md | 60 fps: what it patches, measurements, what's unchecked | touching CTimer or the frame wait |
 | docs/lcs/input.md | the game's layout, the bindings, key ownership, the on-foot camera takeover, testing | touching input or the camera |
 | docs/lcs/chase-camera.md | the chase camera: hook sites, the program, on foot / vehicle framing, savestates, the fixtures | touching the camera or adding a hook |
-| docs/lcs/free-aim.md | the game's free aim, the gun target, the fire hook, measurements, the armed fixtures | touching aiming or shooting |
+| docs/lcs/free-aim.md | the game's free aim, the gun target, the fire hook, the sniper / rocket scope, measurements, the armed fixtures | touching aiming or shooting |
 | docs/lcs/world-memory.md | the PSP-2000 partition and the game's own larger streaming heap | touching memory size or draw distance |
 | docs/lcs/anti-aliasing.md | SMAA, where it runs, the world drawn in pieces, the debug views | touching LCSSmaa or the draw engine seam |
 | docs/lcs/front-end.md | the pause menu, the game's own pages, load / new game / auto-save, the curtain, the game's settings | touching the menu, a setting, or anything that drives the game's menu |

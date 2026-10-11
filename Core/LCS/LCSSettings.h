@@ -63,6 +63,9 @@ struct LCSSettings {
 	// from before these existed takes the look settings' values, so nothing changes for it.
 	float aimSensitivity = 0.0025f;
 	bool invertAimY = false;
+	// The scoped weapons' (sniper, rocket launcher): radians per count at the widest view, scaled by
+	// the zoom like the aim's. Vertical sense is the aim's. A file from before it takes the aim's.
+	float scopedSensitivity = 0.0025f;
 
 	// Save after every story mission, into the game's last save slot (LCSFrontEnd).
 	bool autoSave = true;

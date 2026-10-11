@@ -39,7 +39,7 @@ its table row a variable and an ini key.
 | game | NEW GAME, LOAD GAME and DELETE GAME: the saves on the memory stick (each `ULUS10041S*/PARAM.SFO`), `*` on the newest, `(AUTO)` on the auto-save's slot | |
 | mouse | keyboard and mouse, mouse look, sensitivity, invert, on-foot camera, vehicle camera, vehicle camera follows | |
 | controller | look sensitivity and invert look (the game's, for the stick), stick deadzone (PPSSPP's) | controller scheme (the VCS pad scheme) |
-| aiming | free aim, aim sensitivity, invert aim (free aim's own channel) | sniper and RPG sensitivity (the scoped weapons have no mouse yet) |
+| aiming | free aim, aim sensitivity, invert aim (free aim's own channel), sniper and RPG sensitivity (the scope, free-aim.md) | |
 | audio | sound, master volume (PPSSPP's), SFX and radio volume (the game's) | custom soundtracks (the game's setter has to be called) |
 | display | brightness (the game's), resolution, fullscreen, show FPS (PPSSPP's), frame limiter (`FrameRate60`) | widescreen |
 | advanced | texture quality, anisotropic filtering (PPSSPP's), anti-aliasing, world memory | shadows, ambient occlusion, water |

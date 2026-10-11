@@ -72,11 +72,58 @@ interpreter: firing in free aim hit `0x08858638` once a bullet and nothing else.
 
 `LCS_CAM_TRACE=1` logs every redirected shot: weapon, range, the hit and its distance from the line.
 
+## The scope
+
+The sniper rifle (types 28 and 29, `m_weapons[8]`) and the rocket launcher (type 30) don't free aim:
+R takes them to a first-person camera, mode 7 for the sniper and 8 for the launcher. Modes 34, 45
+and 46 share its Process (`0x088f6f44`), so they come along. `ScopeLook` in `LCSFreeAim.cpp`, from
+the frame boundary after free aim's turn; `ScopedSensitivity` in lcs.ini (the Aiming page's
+"Sniper and RPG sensitivity"; a file without it starts at `AimSensitivity`), and the aim's
+`InvertAimY`.
+
+**The game's scope keeps what it is given.** It adds a smoothed stick rate to Beta and Alpha, clamps
+Alpha (60 degrees up, 89.5 down) and turns the ped to the view. Nothing pulls back, unlike mode 11's
+gun target: with the stick centred the rates are 0, and Beta -0.5 / Alpha 0.3 written over the
+debugger held for a second, the ped's heading with them. So the mouse writes a change on what the
+camera holds, as the on-foot camera's mouse look does, scaled by FOV / 70 so a count moves the
+picture the same distance at any zoom.
+
+- **The stick stays centred**, as in free aim: WASD is the scope's stick, and D held a second turned
+  it 0.8 rad against the mouse.
+- **The wheel zooms** in the two modes that zoom (7, and 46), by 1.25 a notch, 70 to 15 degrees in
+  seven, and changes no weapon. It writes the game's zoom target (`0x08b35e0c`), the FOV the scope
+  eases to once Square and Cross are let go, so the zoom is the game's own smooth one. Space and
+  Left Shift (Square and Cross) still zoom as the game does.
+- **R alone, no free-aim tap**: the d-pad-down press right mouse adds for free aim is skipped with a
+  sniper rifle in hand. The launcher fires projectiles (fire type 2), so it never had one.
+- **Nothing on the shot.** The player's sniper shot is its own function, `0x0885d3a0` (CWeapon::Fire
+  sends types 28 and 29 there for the player): a bullet from the active camera's Source along its
+  Front, which is where the scope points. The launcher's rocket hit the slope its reticle was on.
+  The fire hook only takes free aim.
+
+Measured (the armed fixture, Release, 30 fps):
+
+| | result |
+|---|---|
+| sniper, right mouse | mode 7 at once, FOV 70; no d-pad down on the pad (the rifle, as a control: d-pad down, mode 11) |
+| 200 counts right, FOV 70 | Beta -0.500 (expected -0.500) |
+| 100 counts forward, InvertAimY on | Alpha -0.250 (expected -0.250) |
+| three notches up | target 35.84, FOV 36.19 (the game stops easing within 0.5) |
+| 200 counts right, FOV 36.2 | Beta -0.2585 (expected -0.2585) |
+| D held 1 s | no change |
+| two notches down, then eight up | target 56.0, then 15.0 (clamped), FOV 15.13 |
+| a shot | ammo 42 -> 41 |
+| scope let go, a notch | mode 4, and the notch changed weapon |
+| launcher, right mouse | mode 8; 300 counts left: Beta +0.750; two notches: nothing |
+| launcher, a shot | ammo 5 -> 4; the rocket hit the slope the reticle was on |
+
 ## Fixtures
 
 `lcs_foot_armed.ppst` (all three weapon-set cheats, fists out) and `lcs_foot_rifle.ppst` (the
 rifle, type 26, out) in `memstick/PSP/PPSSPP_STATE/`, in the first mission's park. The cheats were
-typed with the pipe's `pad` verb, the queue Debug -> LCS -> Pad plays.
+typed with the pipe's `pad` verb, the queue Debug -> LCS -> Pad plays. The armed fixture's slot 8
+is a sniper (type 29); weapon set 2 (`pad Up Circle Circle Down Left Circle Circle Right`) puts the
+rocket launcher in slot 7.
 
 ## Not done / unchecked
 
@@ -84,7 +131,7 @@ typed with the pipe's `pad` verb, the queue Debug -> LCS -> Pad plays.
   carry on and patches the skip back in to stop (`MoveGateBranch`, a brake); LCS's equivalent in
   the player control code is not found yet.
 - Lock-on with the mouse (the target switching on the d-pad still works).
-- Scoped weapons (sniper, first-person modes) and the drive-by: the game's, untouched.
+- The drive-by: the game's, untouched.
 - Only the rifle was measured; the pistol, SMGs and shotguns go through the same fire site, but the
   shotgun's pellets may take another path (`0x0885b36c` has its own three raycasts).
 - The reticle position is the middle of the screen as drawn; mode 11's own crosshair offsets

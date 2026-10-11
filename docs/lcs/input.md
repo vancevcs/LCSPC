@@ -43,13 +43,13 @@ in both games. Debug -> LCS -> Input lists it.
 | W A S D | move (the stick) | W accelerate, S brake / reverse, A D steer | move |
 | Up / Down arrows | (PPSSPP's d-pad) | lean a bike, aim a water cannon | (PPSSPP's d-pad) |
 | Left mouse, Left Ctrl | fire | fire | |
-| Right mouse | aim: with a gun, straight into free aim, aimed by the mouse | | |
+| Right mouse | aim: with a gun, straight into free aim, aimed by the mouse; with a sniper rifle or rocket launcher, the scope | | |
 | Middle mouse | lock on (the game's R, no free aim) | | |
-| Space | jump | handbrake | select |
-| Left Shift | sprint | (claimed, does nothing: PPSSPP's rapid fire) | |
+| Space | jump; in the sniper's scope, zoom in (the game's Square) | handbrake | select |
+| Left Shift | sprint; in the sniper's scope, zoom out (Cross) | (claimed, does nothing: PPSSPP's rapid fire) | |
 | F | enter vehicle / hang up | exit / hang up | map: place / remove the marker |
 | Q / E | previous / next weapon (target when locked on) | look left / right, and the drive-by to that side | map: zoom out / in |
-| mouse wheel | next / previous weapon | next / previous station | map: zoom |
+| mouse wheel | next / previous weapon; in the sniper's scope, zoom | next / previous station | map: zoom |
 | R / T | | previous / next station | |
 | H | | horn | |
 | C | look behind | look behind | |
@@ -200,8 +200,8 @@ Three traps:
 
 ## Not done
 
-- Walking while free-aiming (free-aim.md), lock-on aimed with the mouse, and the scoped and
-  first-person weapons (modes 7/8/34/45/46).
+- Walking while free-aiming (free-aim.md) and lock-on aimed with the mouse. The scoped weapons
+  are done (free-aim.md "The scope").
 - Gamepads: the layer only claims keyboard and mouse; a pad goes to PPSSPP's mapper with the PSP
   layout.
 - A walk modifier, direct weapon selection by number.

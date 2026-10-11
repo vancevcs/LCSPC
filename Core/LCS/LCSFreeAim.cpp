@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <iterator>
 #include <optional>
 
 #include "Common/Log.h"
@@ -142,6 +143,17 @@ Vec3 g_rayDir;
 bool g_haveHit = false;
 Vec3 g_lastHit;
 float g_lastHitOffLine = 0.0f;
+
+// --- The scope ---
+bool g_scopeActive = false;
+int g_scopeMode = -1;
+float g_scopeFov = 0.0f;
+float g_scopeZoomTarget = 0.0f;
+u64 g_scopeFrames = 0;
+
+// One wheel notch narrows or widens the scope's view by this factor: the sniper's whole range,
+// 70 to 15 degrees, in seven.
+const float kScopeZoomStep = 1.25f;
 
 // LCS_CAM_TRACE=1 (the chase camera's hatch) also logs every redirected shot and where it hit.
 bool Trace() {
@@ -299,6 +311,65 @@ bool FreeAimLook(float dx, float dy) {
 	return true;
 }
 
+bool PlayerHasScopedWeapon() {
+	const u32 ped = PlayerPed();
+	return ped && ReadU8(ped + 0x6b8).value_or(0xff) == kLCSWeaponSlotSniper && CurrentWeaponType(ped) > 0;
+}
+
+bool ScopeActive() {
+	const u32 ped = PlayerPed();
+	if (!ped || ReadAddrBool(LCSAddr::PlayerInVehicle).value_or(false)) {
+		return false;
+	}
+	const int mode = (int)ReadU16(ActiveCam() + kLCSCamModeOffset).value_or(0xffff);
+	return std::find(std::begin(kLCSCamModesScoped), std::end(kLCSCamModesScoped), mode) != std::end(kLCSCamModesScoped);
+}
+
+bool ScopeLook(float dx, float dy, int zoomNotches) {
+	g_scopeActive = ScopeActive();
+	if (!g_scopeActive) {
+		g_scopeMode = -1;
+		return false;
+	}
+	const u32 cam = ActiveCam();
+	g_scopeMode = (int)ReadU16(cam + kLCSCamModeOffset).value_or(0xffff);
+	const std::optional<float> fov = ReadFloat(cam + kLCSCamFOVOffset);
+	g_scopeFov = fov.value_or(0.0f);
+	g_scopeZoomTarget = ReadFloat(kLCSScopeZoomTarget).value_or(0.0f);
+
+	// The wheel, through the zoom target, so the game eases the view there as it does after Square
+	// or Cross. Only the two modes that zoom; the others keep 70 and the notch is spent.
+	if (zoomNotches != 0 && fov && (g_scopeMode == kLCSCamModeSniper || g_scopeMode == kLCSCamModeCamera)) {
+		const float from = g_scopeZoomTarget > 0.0f ? g_scopeZoomTarget : *fov;
+		const float minFov = g_scopeMode == kLCSCamModeCamera ? kLCSScopeFOVMinCamera : kLCSScopeFOVMin;
+		g_scopeZoomTarget = Clamp(from / std::pow(kScopeZoomStep, (float)zoomNotches), minFov, kLCSScopeFOVMax);
+		WriteFloat(kLCSScopeZoomTarget, g_scopeZoomTarget);
+	}
+
+	if (dx == 0.0f && dy == 0.0f) {
+		return true;
+	}
+	const std::optional<float> beta = ReadFloat(cam + kLCSCamBetaOffset);
+	const std::optional<float> alpha = ReadFloat(cam + kLCSCamAlphaOffset);
+	if (!beta || !alpha) {
+		return true;
+	}
+	// A change on what the camera holds, as the stick's would be. Scaled by the zoom like the aim, so
+	// a count moves the picture the same distance at any zoom.
+	const LCSSettings &s = Settings();
+	const float scale = s.scopedSensitivity * Clamp(fov.value_or(70.0f) / 70.0f, 0.02f, 2.0f);
+	const float ySign = s.invertAimY ? -1.0f : 1.0f;
+	// Front is (cos(Beta), sin(Beta)) here, so the mouse to the right lowers Beta. Not wrapped: the
+	// game wraps it on foot, and a turret mounted on a vehicle keeps it relative and clamps it.
+	WriteFloat(cam + kLCSCamBetaOffset, *beta - dx * scale);
+	const float pitchMin = g_scopeMode == kLCSCamModeHeliCannon ? kLCSScopePitchMinHeliCannon : kLCSScopePitchMin;
+	WriteFloat(cam + kLCSCamAlphaOffset, Clamp(*alpha - dy * scale * ySign, pitchMin, kLCSScopePitchMax));
+	if (g_scopeFrames++ == 0) {
+		NOTICE_LOG(Log::HLE, "LCS: the mouse aimed the scope (camera mode %d, FOV %.1f)", g_scopeMode, fov.value_or(0.0f));
+	}
+	return true;
+}
+
 int Hook_lcs_fire_raycast() {
 	if (!g_installed || !IsActive() || !FreeAimTuning().redirectShots) {
 		return 0;
@@ -432,6 +503,9 @@ void RemoveFreeAim() {
 	g_holding = false;
 	g_seen = 0;
 	g_redirected = 0;
+	g_scopeActive = false;
+	g_scopeMode = -1;
+	g_scopeFrames = 0;
 }
 
 void FreeAimGetStats(LCSFreeAimStats *out) {
@@ -452,6 +526,11 @@ void FreeAimGetStats(LCSFreeAimStats *out) {
 	out->lastHit[1] = g_lastHit.y;
 	out->lastHit[2] = g_lastHit.z;
 	out->lastHitOffLine = g_lastHitOffLine;
+	out->scopeActive = g_scopeActive;
+	out->scopeMode = g_scopeMode;
+	out->scopeFov = g_scopeFov;
+	out->scopeZoomTarget = g_scopeZoomTarget;
+	out->scopeFrames = g_scopeFrames;
 }
 
 }  // namespace LCS

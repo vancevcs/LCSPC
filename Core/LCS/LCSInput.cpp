@@ -188,6 +188,9 @@ static constexpr int kFreeAimPulseTicks = 6;
 static bool g_aimKeyWas = false;
 static int g_freeAimPulse = 0;
 
+// Wheel notches made in the scope, for its zoom at the next frame boundary (LCS::ScopeLook).
+static int g_scopeZoomNotches = 0;
+
 const char *InputContextName(InputContext context) {
 	switch (context) {
 	case InputContext::OnFoot: return "on foot";
@@ -231,6 +234,11 @@ static bool TranslateKeyLocked(InputContext context, InputKeyCode physical, Inpu
 	}
 	*as = physical;
 	return true;
+}
+
+// The scoped weapons' camera is the mouse's whenever the mouse looks at all (LCSFreeAim's ScopeLook).
+static bool MouseAimsScope(InputContext context) {
+	return context == kFoot && Settings().mouseLook && ScopeActive();
 }
 
 static bool KeyLive(const HeldKey &held, InputContext now) {
@@ -361,7 +369,8 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 			}
 		}
 	}
-	if (aimKey && !g_aimKeyWas && Settings().freeAim && PlayerHasFirearm()) {
+	// Not with a sniper rifle: R alone takes it to its scope.
+	if (aimKey && !g_aimKeyWas && Settings().freeAim && PlayerHasFirearm() && !PlayerHasScopedWeapon()) {
 		g_freeAimPulse = kFreeAimDelayTicks + kFreeAimPulseTicks;
 	} else if (!aimKey) {
 		g_freeAimPulse = 0;
@@ -374,7 +383,11 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 		g_freeAimPulse--;
 	}
 
-	if ((context == kFoot || context == kCar || context == kMenu) && !bridge) {
+	// In the scope the wheel zooms, at the frame boundary, and changes no weapon.
+	if (!bridge && MouseAimsScope(context)) {
+		g_scopeZoomNotches += wheel;
+		g_pendingWheel = 0;
+	} else if ((context == kFoot || context == kCar || context == kMenu) && !bridge) {
 		g_pendingWheel += wheel;
 	} else {
 		g_pendingWheel = 0;
@@ -415,8 +428,8 @@ static void ApplyStick(InputContext context, const std::vector<std::pair<InputKe
 	float y = 0.0f;
 	// In the game's free aim the stick is the aim: WASD there turned the view against the mouse
 	// (0.04 rad a second each way) and moved nobody. So it stays centred and the player stands to
-	// aim, as on the PSP.
-	const bool freeAim = context == kFoot && Settings().freeAim && FreeAimActive();
+	// aim, as on the PSP. The scope the same: D held a second turned it 0.8 rad.
+	const bool freeAim = context == kFoot && ((Settings().freeAim && FreeAimActive()) || MouseAimsScope(context));
 	const bool bridge = FrontEndDriving();
 	float driveByX = 0.0f;
 	for (const auto &[key, h] : held) {
@@ -581,6 +594,12 @@ void InputFrameBoundary() {
 	if (context == kFoot && s.freeAim && s.keyboardMouse && s.mouseLook && FreeAimLook(dx, dy)) {
 		return;
 	}
+	// Then the scope, the other aim on foot (modes 7, 8, 34, 45, 46), with the wheel's zoom.
+	const int zoomNotches = g_scopeZoomNotches;
+	g_scopeZoomNotches = 0;
+	if (context == kFoot && s.keyboardMouse && s.mouseLook && ScopeLook(dx, dy, zoomNotches)) {
+		return;
+	}
 	if (context == kCar && ChaseCamTakesLook(kCar)) {
 		// The chase camera's convention: yaw counter-clockwise from above, pitch up. The mouse to
 		// the right turns the view right; away from you looks up.
@@ -622,6 +641,7 @@ void ResetInput() {
 	g_pulseGap = 0;
 	g_aimKeyWas = false;
 	g_freeAimPulse = 0;
+	g_scopeZoomNotches = 0;
 }
 
 InputContext CurrentInputContext() {

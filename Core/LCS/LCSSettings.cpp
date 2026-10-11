@@ -84,7 +84,6 @@ static std::string ResolutionText(const Option &opt) {
 // promised before the feature exists. The values are the ones the VCS fork ships.
 static struct {
 	bool padScheme = true;
-	float scopedSensitivity = 0.05f;
 	bool customTracks = false;
 	int widescreen = 0;
 	int shadows = 1;
@@ -271,10 +270,11 @@ const std::vector<Option> &Options() {
 		addBool(OptionPage::Aiming, "InvertAimY", "Invert aim vertically",
 			"Push the mouse forward to aim down.", &s.invertAimY);
 		enabledBy(&s.freeAim);
-		addFloat(OptionPage::Aiming, nullptr, "Sniper and RPG sensitivity",
-			"Only for the two scoped weapons.",
-			&g_placeholder.scopedSensitivity, 0.005f, 0.2f);
-		placeholder();
+		addFloat(OptionPage::Aiming, "ScopedSensitivity", "Sniper and RPG sensitivity",
+			"How far the scope turns per unit of mouse movement. Zoomed in it turns less, so the "
+			"picture moves the same.",
+			&s.scopedSensitivity, 0.0005f, 0.01f);
+		enabledBy(&s.mouseLook);
 
 		// --- Audio ---
 
@@ -441,6 +441,10 @@ void LoadSettings() {
 	}
 	if (!section->HasKey("InvertAimY")) {
 		g_settings.invertAimY = g_settings.invertMouseY;
+	}
+	// Nor the scope before ScopedSensitivity: it starts where the aim is.
+	if (!section->HasKey("ScopedSensitivity")) {
+		g_settings.scopedSensitivity = g_settings.aimSensitivity;
 	}
 	RefreshOptionProxies();
 	// The keys the player moved (the front end's key cards).

@@ -19,8 +19,9 @@
 
 #include "Common/CommonTypes.h"
 
-// Mouse free aim on foot. docs/lcs/free-aim.md has the measurements; the VCS fork's VCSFireHook and
-// the aim half of VCSCamera are the same design, and docs/vcs/aiming.md is why it is shaped this way.
+// Mouse free aim on foot, and the scoped weapons (below). docs/lcs/free-aim.md has the measurements;
+// the VCS fork's VCSFireHook and the aim half of VCSCamera are the same design, and
+// docs/vcs/aiming.md is why it is shaped this way.
 //
 // LCS's own free aim (hold R, tap d-pad down: camera mode 11, ped+0xc9d set) is driven by a
 // placeholder object the ped points its gun at (ped+0x6bc). The game places it along the camera's
@@ -67,6 +68,18 @@ bool PlayerHasFirearm();
 // every frame). True when free aim took it; false outside free aim, which also lets go of the aim.
 bool FreeAimLook(float dx, float dy);
 
+// The scoped weapons: the sniper's and the rocket launcher's first-person camera (modes 7, 8, and
+// 34 / 45 / 46, which share its Process). Unlike mode 11 it has no target pulling it back: with the
+// stick centred it keeps whatever Beta and Alpha it is given, so the mouse writes them, a change on
+// what the camera holds. The wheel zooms where the scope zooms, through the game's own zoom target.
+//
+// Whether the player's camera is one of those on foot now.
+bool ScopeActive();
+// Whether the player holds a sniper rifle, which goes to the scope rather than to free aim.
+bool PlayerHasScopedWeapon();
+// From the frame boundary, every frame. zoomNotches > 0 zooms in. True when the scope took it.
+bool ScopeLook(float dx, float dy, int zoomNotches);
+
 // The two replacement entries in ReplaceTables.cpp.
 int Hook_lcs_fire_raycast();
 int Hook_lcs_fire_raycast_done();
@@ -87,6 +100,12 @@ struct LCSFreeAimStats {
 	bool haveHit = false;        // the last redirected shot hit something
 	float lastHit[3] = {};
 	float lastHitOffLine = 0.0f; // its distance from the camera's centre line
+
+	bool scopeActive = false;
+	int scopeMode = -1;
+	float scopeFov = 0.0f;
+	float scopeZoomTarget = 0.0f;
+	u64 scopeFrames = 0;         // frames the mouse aimed the scope
 };
 void FreeAimGetStats(LCSFreeAimStats *out);
 

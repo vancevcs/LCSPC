@@ -426,6 +426,18 @@ A save restores the first five (`0x088b21a4`..).
 | crosshair position | `TheCamera+0x180` / `+0x184` (0.53 / 0.47) | mode 11 reads them; skipped in free aim |
 | screen aspect | `0x08b30d68` (1.7778 live) | mode 11 divides the crosshair's y by it |
 
+### The scoped weapons - live and static, [lcs/free-aim.md](lcs/free-aim.md) "The scope"
+
+| | where | how found |
+|---|---|---|
+| the scope camera | modes 7 (sniper), 8 (rocket launcher), 34, 45, 46: one Process, `0x088f6f44` | CCam::Process's switch, decompiled; 7 and 8 read live with types 29 and 30 in hand |
+| its look | Beta / Alpha += a smoothed rate (`CCam+0xd0` / `+0xc0`) from the stick, x FOV / 80; Alpha clamped to -1.562 / +1.047 (mode 45: -0.532) | decompiled; Beta -0.5 and Alpha 0.3 written live held for a second, the ped's heading followed |
+| its Front | (cos Beta cos Alpha, sin Beta cos Alpha, sin Alpha), not mode 4's negated one | decompiled; read back live to 0.001 |
+| zoom (modes 7 and 46) | Square (`CPad+0x26`, getter `0x08a989d8`) in, Cross (`+0x2a`, `0x08a98a18`) out, x or / (1 + 0.0255 TimeStep) a frame; FOV 15..70 (46: 3..70) | decompiled |
+| zoom target | `0x08b35e0c` float | the FOV the scope eases to (`0x088ea7bc`) with neither zoom button held; written live 20.0: FOV 20.3 within 0.15 s |
+| sniper slot | `m_weapons[8]`: types 28 and 29, range 100, fire type 1 | weapon info `+0x68` is the slot (28/29 read 8; 30, the rocket launcher, 7) |
+| weapon info flags | `+0x6c`: the snipers' 0x28040 is also type 27's, a rifle that free-aims | so the slot, not a flag, tells the sniper from the rifles |
+
 ### The frame boundary's return address `0x08ab33a0`
 
 The `jal sceKernelGetSystemTimeWide` at `0x08ab3398`, the first call after the frame wait loop:

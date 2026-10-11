@@ -264,6 +264,34 @@ inline constexpr u32 kLCSFireRaycastCallOp = 0x0E214862;
 inline constexpr u32 kLCSFireRaycastDone = 0x088521DC;
 inline constexpr u32 kLCSFireRaycastDoneOp = 0x8FBF0040;
 
+// --- The scoped weapons (LCSFreeAim's scope look, docs/lcs/free-aim.md "The scope") ---
+//
+// CCam::Process (0x088efc44) sends modes 7 (sniper), 8 (rocket launcher), 34, 45 and 46 to one
+// first-person handler, 0x088f6f44. On foot it adds a smoothed, FOV-scaled stick rate to Beta and
+// Alpha (the rates at CCam+0xd0 / +0xc0), clamps Alpha, builds Front as (cos(Beta) cos(Alpha),
+// sin(Beta) cos(Alpha), sin(Alpha)) - not Process_FollowPed's negated one - and turns the ped to
+// it. With the stick centred the rates are 0 and written angles stay: measured, Beta -0.5 and
+// Alpha 0.3 held for a second, and the ped's heading followed.
+inline constexpr int kLCSCamModesScoped[] = { 7, 8, 34, 45, 46 };
+inline constexpr int kLCSCamModeSniper = 7;
+inline constexpr int kLCSCamModeHeliCannon = 45;
+inline constexpr int kLCSCamModeCamera = 46;
+// Its pitch limits: 60 degrees up, 89.5 down (mode 45: 30.5 down).
+inline constexpr float kLCSScopePitchMax = 1.0471976f;
+inline constexpr float kLCSScopePitchMin = -1.5620697f;
+inline constexpr float kLCSScopePitchMinHeliCannon = -0.53232545f;
+// Modes 7 and 46 zoom; the rest hold FOV 70. Square divides the FOV by (1 + 0.0255 * TimeStep) a
+// frame and Cross multiplies it (CPad 0x08a989d8 / 0x08a98a18), and this static then holds the new
+// FOV; with neither held the FOV eases to it (0x088ea7bc) while it is more than 0.5 off. So a
+// written target is a smooth zoom: measured 70 -> 20.3 within 0.15 s. Entering the mode sets it
+// to the FOV of the moment.
+inline constexpr u32 kLCSScopeZoomTarget = 0x08B35E0C;
+inline constexpr float kLCSScopeFOVMax = 70.0f;
+inline constexpr float kLCSScopeFOVMin = 15.0f;
+inline constexpr float kLCSScopeFOVMinCamera = 3.0f;
+// m_weapons[8] holds both sniper rifles, types 28 and 29 (CWeaponInfo+0x68 is a weapon's slot).
+inline constexpr u32 kLCSWeaponSlotSniper = 8;
+
 // The reserve MainMemoryManager (0x08aa4af8) leaves out of sceKernelMaxFreeMemSize, which is what
 // the streaming heap (0x08a0b794) is then built from, less 512KB: 5MB as shipped (0x4e6666), 12MB
 // when more than 22MB is free (docs/lcs/world-memory.md).
