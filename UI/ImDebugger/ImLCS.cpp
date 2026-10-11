@@ -35,6 +35,7 @@
 #include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSMemory.h"
+#include "Core/LCS/LCSRoute.h"
 #include "Core/LCS/LCSSettings.h"
 #include "Core/LCS/LCSState.h"
 #include "GPU/Common/LCSSmaa.h"
@@ -629,6 +630,31 @@ void ImLCSWindow::DrawAim() {
 	}
 }
 
+void ImLCSWindow::DrawRoute() {
+	LCS::LCSSettings &settings = LCS::Settings();
+	if (ImGui::Checkbox("GPS route", &settings.gpsRoute)) {
+		LCS::SaveSettings();
+	}
+	ImGui::SameLine();
+	ImGui::TextDisabled("a line on the radar to the map marker or a mission's destination, while driving");
+	LCS::LCSRouteTuning &t = LCS::RouteTuning();
+	ImGui::Checkbox("Show the radar circle", &t.showCalibration);
+	ImGui::SliderFloat("Line width", &t.thickness, 0.5f, 4.0f, "%.2f");
+	ImGui::SliderFloat("Hole for the arrow", &t.playerHoleRadius, 0.0f, 8.0f, "%.1f");
+
+	LCS::LCSRouteStats s;
+	LCS::RouteGetStats(&s);
+	ImGui::Separator();
+	ImGui::Text("Status: %s", s.status);
+	ImGui::Text("Road graph: %d nodes, %d links, %d switched off, %d pieces", s.nodes, s.links, s.disabled, s.components);
+	if (s.haveDestination) {
+		ImGui::Text("Destination: %s at %.1f, %.1f", s.toMission ? "mission" : "map marker", s.destination[0], s.destination[1]);
+	} else {
+		ImGui::Text("Destination: none");
+	}
+	ImGui::Text("Route: %d nodes, %.0f units   searches %llu", s.routeNodes, s.routeLength, (unsigned long long)s.searches);
+}
+
 void ImLCSWindow::Draw(ImConfig &cfg) {
 	ImGui::SetNextWindowSize(ImVec2(600, 480), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("LCS", &cfg.lcsOpen)) {
@@ -654,6 +680,10 @@ void ImLCSWindow::Draw(ImConfig &cfg) {
 		}
 		if (ImGui::BeginTabItem("Aim")) {
 			DrawAim();
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Route")) {
+			DrawRoute();
 			ImGui::EndTabItem();
 		}
 		if (ImGui::BeginTabItem("Pad")) {

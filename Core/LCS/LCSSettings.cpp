@@ -89,7 +89,6 @@ static struct {
 	int shadows = 1;
 	bool ambientOcclusion = false;
 	int water = 1;
-	bool gpsRoute = false;
 } g_placeholder;
 
 // Rows standing in for one part of a PPSSPP setting: read back by RefreshOptionProxies, written
@@ -371,9 +370,9 @@ const std::vector<Option> &Options() {
 		addBool(OptionPage::Gameplay, "AutoSave", "Auto-save",
 			"Save after every story mission, into the last save slot. Your other saves are never touched.",
 			&s.autoSave);
-		addBool(OptionPage::Gameplay, nullptr, "GPS route",
-			"A route to your marker on the radar, along the roads.", &g_placeholder.gpsRoute);
-		placeholder();
+		addBool(OptionPage::Gameplay, "GPSRoute", "GPS route",
+			"While you drive, a line on the radar along the roads to your map marker, or to where a "
+			"mission sends you.", &s.gpsRoute);
 		addChoice(OptionPage::Gameplay, "Language", "Language",
 			"The game's text and menus; the voices stay English. Takes effect the next time the game starts.",
 			&s.language, kLanguageLabels, ARRAY_SIZE(kLanguageLabels), 0);

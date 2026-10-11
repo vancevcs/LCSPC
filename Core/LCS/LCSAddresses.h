@@ -292,6 +292,77 @@ inline constexpr float kLCSScopeFOVMinCamera = 3.0f;
 // m_weapons[8] holds both sniper rifles, types 28 and 29 (CWeaponInfo+0x68 is a weapon's slot).
 inline constexpr u32 kLCSWeaponSlotSniper = 8;
 
+// --- The GPS route (LCSRoute, docs/lcs/gps.md) ---
+//
+// ThePaths: a pointer to CPathFind, which get_closest_car_node (02C6, 0x08a220b0) hands to
+// FindNodeClosestToCoors (0x0897572c) and the node-to-coordinates call (0x089777a8).
+inline constexpr u32 kLCSThePathsPtr = 0x08B3980C;
+inline constexpr u32 kLCSPathNodeArray = 0x00;      // pointer to the nodes
+inline constexpr u32 kLCSPathLinkArray = 0x08;      // pointer to the links, u16 each
+inline constexpr u32 kLCSPathAfterLinks = 0x0c;     // pointer to the array after them: where they end
+inline constexpr u32 kLCSPathNodeCount = 0x14;      // 5519 = car + ped
+inline constexpr u32 kLCSPathCarNodeCount = 0x18;   // 2196: the car nodes come first
+// A node is VC's CPathNode: 20 bytes, x / y / z as s16 times 8 at +4, the first link (s16) at
+// +0xc, and at +0x10 the link count in the low nibble with 0x20 for a road switched off (the
+// Callahan Bridge and the Porter Tunnel at the start of the story; switch_roads_off sets it).
+inline constexpr u32 kLCSPathNodeStride = 20;
+inline constexpr u32 kLCSPathNodePos = 0x04;
+inline constexpr float kLCSPathNodeScale = 8.0f;
+inline constexpr u32 kLCSPathNodeFirstLink = 0x0c;
+inline constexpr u32 kLCSPathNodeFlags = 0x10;
+inline constexpr u8 kLCSPathNodeDisabled = 0x20;
+// A link is a node index in the low 14 bits; the top two are flags (0x8000 on 432, 0xc000 on 144).
+inline constexpr u16 kLCSPathLinkMask = 0x3fff;
+
+// The radar (CRadar::TransformRealWorldPointToRadarSpace, 0x08967b20): a world point is
+// d = (point - origin) / range, then (cos * d.x + sin * d.y, cos * d.y - sin * d.x) in the unit
+// disc, +y forward. Origin is the player's position; range 96.0 as read.
+inline constexpr u32 kLCSRadarOrigin = 0x08B6E218;   // two floats
+inline constexpr u32 kLCSRadarSin = 0x08B6E220;
+inline constexpr u32 kLCSRadarCos = 0x08B6E224;
+inline constexpr u32 kLCSRadarRange = 0x08B5E7C0;
+// The disc's box on the PSP's 480x272 screen, from its getters (0x08986fe4 and three more): left
+// 12, top 196, 65.8 square, or top 170 and 92 square while kLCSMultiplayer is set. The disc to
+// the screen is (left + w/2 + x w/2, top + h/2 - y h/2) (0x08967860). Checked on a capture: the
+// ring's centre within a pixel of (44.9, 228.9).
+inline constexpr float kLCSRadarLeft = 12.0f;
+inline constexpr float kLCSRadarTop = 196.0f;
+inline constexpr float kLCSRadarSize = 65.8f;
+inline constexpr u32 kLCSMultiplayer = 0x08B56C7C;   // u8; kLCSWeaponInfoSelect is the same byte
+// CHud::Draw (0x08988940) draws the radar only while this is 1 and the camera's cutscene bars
+// (TheCamera+0x75) are off, then only with RADAR MODE (kLCSRadarMode) not OFF and this byte clear.
+inline constexpr u32 kLCSHudWantsToDraw = 0x08B5E214;
+inline constexpr u32 kLCSCamWideScreenOn = 0x08B83415;
+inline constexpr u32 kLCSRadarSuppressed = 0x08B5E56D;
+
+// CRadar::ms_RadarTrace (SetCoordBlip, 0x08967e40): 75 blips of 0x50 bytes.
+inline constexpr u32 kLCSRadarTrace = 0x08E4AA20;
+inline constexpr u32 kLCSBlipStride = 0x50;
+inline constexpr int kLCSBlipCount = 75;
+inline constexpr u32 kLCSBlipType = 0x04;     // 1 car, 2 ped, 3 object, 4 coordinate, 5 contact point
+inline constexpr u32 kLCSBlipHandle = 0x08;   // a pool handle, for types 1..3
+inline constexpr u32 kLCSBlipPos = 0x0c;      // three floats, for 4 and 5
+inline constexpr u32 kLCSBlipInUse = 0x33;    // u8
+inline constexpr u32 kLCSBlipDisplay = 0x3e;  // u16: 0 nothing, 1 the 3D marker, 2 the radar, 3 both
+inline constexpr u32 kLCSBlipSprite = 0x40;   // u16: 0 a plain blip
+// The map's own marker ("Player Target", placed with Square on the map page): a coordinate blip
+// with this sprite, colour 0, radar only. A mission's destination is a plain blip (sprite 0).
+inline constexpr u16 kLCSBlipSpriteMapMarker = 49;
+inline constexpr int kLCSBlipTypeCar = 1;
+inline constexpr int kLCSBlipTypePed = 2;
+inline constexpr int kLCSBlipTypeObject = 3;
+inline constexpr int kLCSBlipTypeCoord = 4;
+inline constexpr int kLCSBlipTypeContact = 5;
+// The pools a blip's handle indexes (the blip draw, 0x08969f8c): a pointer to {entries, flags};
+// slot = handle >> 8, live while flags[slot] == (handle & 0xff); the capacity at +8. Entry sizes
+// from GetAt; checked live with the player's own car and ped (handles 0x1001, 0x101).
+inline constexpr u32 kLCSPedPoolPtr = 0x08B4C53C;
+inline constexpr u32 kLCSVehiclePoolPtr = 0x08B4C540;
+inline constexpr u32 kLCSObjectPoolPtr = 0x08B4C54C;
+inline constexpr u32 kLCSPedSize = 0xcb0;
+inline constexpr u32 kLCSVehicleSize = 0x6e0;
+inline constexpr u32 kLCSObjectSize = 0x220;
+
 // The reserve MainMemoryManager (0x08aa4af8) leaves out of sceKernelMaxFreeMemSize, which is what
 // the streaming heap (0x08a0b794) is then built from, less 512KB: 5MB as shipped (0x4e6666), 12MB
 // when more than 22MB is free (docs/lcs/world-memory.md).

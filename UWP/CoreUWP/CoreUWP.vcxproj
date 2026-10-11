@@ -344,6 +344,7 @@
     <ClInclude Include="..\..\Core\LCS\LCSMemory.h" />
     <ClInclude Include="..\..\Core\LCS\LCSMips.h" />
     <ClInclude Include="..\..\Core\LCS\LCSState.h" />
+    <ClInclude Include="..\..\Core\LCS\LCSRoute.h" />
     <ClInclude Include="..\..\Core\LCS\LCSSaveDialog.h" />
     <ClInclude Include="..\..\Core\LCS\LCSFrontEnd.h" />
     <ClInclude Include="..\..\Core\LCS\LCSFreeAim.h" />
@@ -678,6 +679,7 @@
     <ClCompile Include="..\..\Core\LCS\LCSGame.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSMemory.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSState.cpp" />
+    <ClCompile Include="..\..\Core\LCS\LCSRoute.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSFrontEnd.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSFreeAim.cpp" />
     <ClCompile Include="..\..\Core\LCS\LCSChaseCam.cpp" />

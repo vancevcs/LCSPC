@@ -42,7 +42,7 @@ NOTICE line, and Debug -> LCS shows the reason.
 | `LCS::PeekSaveDialog()` | `Core/HLE/sceUtility.cpp` (the dialog is file-static there) and `PSPSaveDialog::LCSPeek` | what the firmware's savedata dialog shows, read-only, so the bridge can drive a load or a save closed-loop (front-end.md) |
 | the language the game is told | `sceUtilityGetSystemParamInt`'s `INT_LANGUAGE` arm | LCS picks its text from the PSP's system language at boot; the Language row decides it for LCS only |
 | the curtain's key gate | `NativeKey`, after the screen manager check | while a sequence walks the game's menu, key presses are swallowed; releases go through |
-| `CreatePauseScreen`, `LCSMenuDue`, `DrawLCSOverlay` | EmuScreen's pause sites, `update`, `renderUI` (and `hasVisibleUI`, `deviceLost`) | the pause may close the game's own menu instead of opening ours; ours comes back after Back from a game page; the curtain and the hint line over the game |
+| `CreatePauseScreen`, `LCSMenuDue`, `DrawLCSOverlay` | EmuScreen's pause sites, `update`, `renderUI` (and `hasVisibleUI`, `deviceLost`) | the pause may close the game's own menu instead of opening ours; ours comes back after Back from a game page; the curtain, the hint line and the GPS line over the game |
 
 ## Files
 
@@ -56,7 +56,9 @@ Core/LCS/            no ImGui, UI or renderer dependencies
   LCSFrameRate       60 fps: frame cap + millisecond carry, re-checked every tick (frame-rate.md)
   LCSInput           keyboard and mouse by context; mouse look on foot (input.md)
   LCSChaseCam        the camera on foot and in vehicles: two hooks and a program in CCamera::Process (chase-camera.md)
-  LCSFreeAim         mouse free aim: the gun target, the camera's angles and a hook on the player's shot (free-aim.md)
+  LCSFreeAim         mouse free aim: the gun target, the camera's angles and a hook on the player's shot;
+                     the sniper and rocket launcher scope (free-aim.md)
+  LCSRoute           the GPS route: the game's road graph, A* to a blip, projected onto the radar (gps.md)
   LCSFrontEnd        the bridge into the game's own menu: its pages, load, new game, the auto-save,
                      the curtain, the game's own settings (front-end.md)
   LCSSaveDialog.h    what the firmware's savedata dialog shows (filled in by PSPSaveDialog)

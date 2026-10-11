@@ -47,6 +47,7 @@
 #include "Core/LCS/LCSFrontEnd.h"
 #include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSInput.h"
+#include "Core/LCS/LCSRoute.h"
 #include "Core/LCS/LCSSettings.h"
 #include "UI/BackgroundAudio.h"
 #include "UI/PauseScreen.h"
@@ -1466,6 +1467,53 @@ static void DrawPageHints(UIContext &dc, int page) {
 	dc.Flush();
 }
 
+// The GPS line over the game's radar (LCSRoute): segments in the PSP's 480x272 units, placed on the
+// rectangle the picture is drawn in, as the hints are. In the radar's own colours: the map marker's
+// red, the mission destination's yellow, both sampled from the radar (#C8393C, #D2D201).
+static const uint32_t kRouteMarkerColor = COLOR(0xC8393C);
+static const uint32_t kRouteMissionColor = COLOR(0xD2D201);
+static const uint32_t kRouteShadowColor = 0x80000000;
+
+static void DrawRoute(UIContext &dc) {
+	LCS::RouteDraw route;
+	if (!LCS::GetRouteSegments(&route)) {
+		return;
+	}
+	const DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(g_display.GetDeviceOrientation());
+	const FRect frame = GetScreenFrame(config.bIgnoreScreenInsets, g_display.pixel_xres, g_display.pixel_yres);
+	FRect rc;
+	CalculateDisplayOutputRect(config, &rc, 480.0f, 272.0f, frame, config.iInternalScreenRotation);
+	// Pixels to the UI's units, then the PSP's units to those.
+	const float px = g_display.pixel_xres > 0 ? g_display.dp_xres / (float)g_display.pixel_xres : 1.0f;
+	const float py = g_display.pixel_yres > 0 ? g_display.dp_yres / (float)g_display.pixel_yres : 1.0f;
+	const float ox = rc.x * px;
+	const float oy = rc.y * py;
+	const float sx = rc.w * px / 480.0f;
+	const float sy = rc.h * py / 272.0f;
+	if (sx <= 0.0f || sy <= 0.0f) {
+		return;
+	}
+	const ImageID white = dc.GetTheme().whiteImage;
+	const float thickness = std::max(1.0f, route.thickness * sy);
+	const uint32_t color = route.toMission ? kRouteMissionColor : kRouteMarkerColor;
+	// A dark edge under the line first, so it reads over the radar's white kerbs as well as its roads.
+	for (int pass = 0; pass < 2; pass++) {
+		const float width = pass == 0 ? thickness + 2.0f : thickness;
+		for (const LCS::RouteSegment &seg : route.segments) {
+			dc.Draw()->Line(white, ox + seg.x1 * sx, oy + seg.y1 * sy, ox + seg.x2 * sx, oy + seg.y2 * sy, width,
+				pass == 0 ? kRouteShadowColor : color);
+		}
+	}
+	if (route.calibration) {
+		dc.Draw()->Circle(ox + route.centreX * sx, oy + route.centreY * sy, route.radius * sx, 1.0f, 64, 0.0f, 0xC0FFFFFF, 1.0f);
+		dc.Draw()->Line(white, ox + (route.centreX - 4.0f) * sx, oy + route.centreY * sy,
+			ox + (route.centreX + 4.0f) * sx, oy + route.centreY * sy, 1.0f, 0xC0FFFFFF);
+		dc.Draw()->Line(white, ox + route.centreX * sx, oy + (route.centreY - 4.0f) * sy,
+			ox + route.centreX * sx, oy + (route.centreY + 4.0f) * sy, 1.0f, 0xC0FFFFFF);
+	}
+	dc.Flush();
+}
+
 // The curtain's fade-out, after the sequence has let it go: wall clock, so it takes the same time on
 // a machine that isn't keeping up.
 static bool g_curtainWasUp = false;
@@ -1473,7 +1521,8 @@ static double g_curtainFadeStart = 0.0;
 static const char *g_curtainWord = nullptr;
 
 bool LCSOverlayVisible() {
-	return LCS::IsActive() && (g_curtainWasUp || LCS::ActiveCurtain() != LCS::CurtainKind::None || LCS::OwnedGamePage() >= 0);
+	return LCS::IsActive() && (g_curtainWasUp || LCS::ActiveCurtain() != LCS::CurtainKind::None || LCS::OwnedGamePage() >= 0 ||
+		LCS::RouteHasDrawing());
 }
 
 void DrawLCSOverlay(UIContext &dc) {
@@ -1484,6 +1533,8 @@ void DrawLCSOverlay(UIContext &dc) {
 		wasUp = false;
 		return;
 	}
+	// Under the curtain, which covers it while a sequence runs.
+	DrawRoute(dc);
 	const LCS::CurtainKind kind = LCS::ActiveCurtain();
 	if (kind != LCS::CurtainKind::None) {
 		// Remembered for the fade, which runs after the sequence has let go of the kind.

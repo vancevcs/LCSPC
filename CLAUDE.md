@@ -50,6 +50,7 @@ Core/LCS/ (no ImGui, UI, or renderer dependencies)
   LCSInput        keyboard and mouse by context; mouse look on foot
   LCSChaseCam     the camera on foot and in vehicles, replaced inside CCamera::Process
   LCSFreeAim      mouse free aim: gun target + camera angles, the shot down the reticle; the scope
+  LCSRoute        the GPS route: the game's road graph, A* to the marker or a mission blip, on the radar
   LCSFrontEnd     the bridge into the game's own menu: map/brief/stats, load, new game, auto-save,
                   the loading curtain, the game's own settings (LCSSaveDialog.h: the savedata peek)
   LCSMips.h       encoders for programs written into PSP memory
@@ -67,10 +68,10 @@ Seams: init/shutdown in `__KernelInit`/`__KernelShutdown`; fingerprint in `__Ker
 tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys and mouse in `NativeKey` /
 `NativeMouseDelta`; the frame boundary in `sceKernelGetSystemTimeWide`; by-address hooks in
 `Core/HLE/ReplaceTables.*`; the memory partition in `InitMemorySizeForGame`; SMAA in
-`DrawEngineVulkan::Flush`; the pause screen in `CreatePauseScreen` (EmuScreen), the curtain in
-`DrawLCSOverlay` (EmuScreen::renderUI); the savedata dialog in `LCS::PeekSaveDialog`
-(sceUtility); compat flag in Core/Compatibility.* + assets/compat.ini. Full table:
-docs/lcs/architecture.md.
+`DrawEngineVulkan::Flush`; the pause screen in `CreatePauseScreen` (EmuScreen), the curtain and
+the GPS line in `DrawLCSOverlay` (EmuScreen::renderUI); the savedata dialog in
+`LCS::PeekSaveDialog` (sceUtility); compat flag in Core/Compatibility.* + assets/compat.ini. Full
+table: docs/lcs/architecture.md.
 
 ## Working rules
 - Measure, don't guess. Cheapest first: the game's Controls screen and GXT -> the script command
@@ -103,4 +104,5 @@ docs/lcs/architecture.md.
 | docs/lcs/world-memory.md | the PSP-2000 partition and the game's own larger streaming heap | touching memory size or draw distance |
 | docs/lcs/anti-aliasing.md | SMAA, where it runs, the world drawn in pieces, the debug views | touching LCSSmaa or the draw engine seam |
 | docs/lcs/front-end.md | the pause menu, the game's own pages, load / new game / auto-save, the curtain, the game's settings | touching the menu, a setting, or anything that drives the game's menu |
+| docs/lcs/gps.md | the GPS route: ThePaths, switched-off roads, the blips and pools, the radar's transform, measurements | touching the route, the radar or the blips |
 | docs/lcs/hd-textures.md | the Android OBB format, matching dumps to HD art, the brightness match, DDS | touching the texture pack or the Android files |

@@ -815,6 +815,7 @@ EXEC_AND_LIB_FILES := \
   $(SRC)/Core/LCS/LCSGame.cpp \
   $(SRC)/Core/LCS/LCSMemory.cpp \
   $(SRC)/Core/LCS/LCSState.cpp \
+  $(SRC)/Core/LCS/LCSRoute.cpp \
   $(SRC)/Core/LCS/LCSFrontEnd.cpp \
   $(SRC)/Core/LCS/LCSFreeAim.cpp \
   $(SRC)/Core/LCS/LCSChaseCam.cpp \

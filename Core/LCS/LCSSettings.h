@@ -69,6 +69,9 @@ struct LCSSettings {
 
 	// Save after every story mission, into the game's last save slot (LCSFrontEnd).
 	bool autoSave = true;
+	// A line on the radar along the roads to the map's marker or a mission's destination, while
+	// driving (LCSRoute).
+	bool gpsRoute = true;
 	// The text language, the game's order: English, French, German, Italian, Spanish. Handed to the
 	// game as the PSP's system language when it asks at boot, so it takes a restart.
 	int language = 0;

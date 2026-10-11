@@ -31,6 +31,7 @@
 #include "Core/LCS/LCSFrontEnd.h"
 #include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSInput.h"
+#include "Core/LCS/LCSRoute.h"
 #include "Core/LCS/LCSSettings.h"
 #include "Core/LCS/LCSState.h"
 
@@ -131,6 +132,7 @@ void Shutdown() {
 		RemoveChaseCam();
 		RemoveFreeAim();
 		FrontEndReset();
+		RouteReset();
 	}
 	ClearState();
 	FrameRateReset();
@@ -169,6 +171,7 @@ void Tick() {
 	// Before the input: it decides the presses InputTick applies.
 	FrontEndTick();
 	InputTick(GetState());
+	RouteTick();
 }
 
 void OnFrameBoundary(u32 returnAddress) {

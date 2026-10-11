@@ -43,7 +43,7 @@ its table row a variable and an ini key.
 | audio | sound, master volume (PPSSPP's), SFX and radio volume (the game's) | custom soundtracks (the game's setter has to be called) |
 | display | brightness (the game's), resolution, fullscreen, show FPS (PPSSPP's), frame limiter (`FrameRate60`) | widescreen |
 | advanced | texture quality, anisotropic filtering (PPSSPP's), anti-aliasing, world memory | shadows, ambient occlusion, water |
-| gameplay | auto-save, language (next boot), subtitles, HUD, radar (the game's) | GPS route |
+| gameplay | auto-save, GPS route (gps.md), language (next boot), subtitles, HUD, radar (the game's) | |
 | key bindings | the cards: on foot, in vehicle, menus, built from `kKeyMappings` (`LCS::KeyListing`); any line rebound by clicking it; RESET KEYS | |
 | cheats | all 35 rows | |
 

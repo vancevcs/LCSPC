@@ -42,6 +42,7 @@ private:
 	void DrawCamera();
 	void DrawPad();
 	void DrawAim();
+	void DrawRoute();
 
 	char cheatText_[128] = "Up Square Square Down Left Square Square Right";
 	std::string cheatError_;

@@ -438,6 +438,21 @@ A save restores the first five (`0x088b21a4`..).
 | sniper slot | `m_weapons[8]`: types 28 and 29, range 100, fire type 1 | weapon info `+0x68` is the slot (28/29 read 8; 30, the rocket launcher, 7) |
 | weapon info flags | `+0x6c`: the snipers' 0x28040 is also type 27's, a rifle that free-aims | so the slot, not a flag, tells the sniper from the rifles |
 
+### The GPS route - live and static, [lcs/gps.md](lcs/gps.md)
+
+| | where | how found |
+|---|---|---|
+| ThePaths | `[0x08b3980c]`, a `CPathFind` | get_closest_car_node (02C6, `0x08a220b0`) loads it for FindNodeClosestToCoors `0x0897572c` and the node-to-coordinates call `0x089777a8` |
+| its arrays and counts | nodes `+0x00`, links `+0x08` (to `+0x0c`), 5519 / 2196 car / 3323 ped at `+0x14` / `+0x18` / `+0x1c`, 4604 car links `+0x24` | read live; the array sizes meet the next pointer exactly |
+| a node | 20 bytes: x y z s16 x8 at `+4`, first link `+0xc`, link count low nibble of `+0x10`, 0x20 switched off | `0x089777a8` decompiled; the structure checks in gps.md |
+| a link | u16, node in `& 0x3fff` | `0x089777a8` masks it; 11510 of 11510 resolve and are mutual |
+| radar transform | origin `0x08b6e218`, sin `0x08b6e220`, cos `0x08b6e224`, range `0x08b5e7c0` | `0x08967b20` decompiled; origin read = the car, sin/cos a unit vector, range 96 |
+| radar box | left 12, top 196, 65.8 (multiplayer: 170, 92) | the getters `0x08986fe4`, `0x08986f84`, `0x08987008`, `0x08986fb4`, on byte `0x08b56c7c` |
+| radar drawn | `0x08b5e214` = 1, `0x08b83415` = 0, RADAR MODE not 2, `0x08b5e56d` = 0 | CHud::Draw `0x08988940` decompiled |
+| blips | `0x08e4aa20`, 75 x 0x50: type `+4`, handle `+8`, position `+0xc`, in use `+0x33`, display `+0x3e`, sprite `+0x40` | SetCoordBlip `0x08967e40` and the blip draw `0x08969f8c` decompiled |
+| the map's marker | a place blip (type 4), sprite 49 | placed one live: a new blip at the cursor |
+| pools | vehicles `[0x08b4c540]` 0x6e0, peds `[0x08b4c53c]` 0xcb0, objects `[0x08b4c54c]` 0x220; {entries, flags, capacity} | GetAt `0x08afb924` / `0x08afb978` / `0x08afb8dc`; the player's car and ped resolve from their handles |
+
 ### The frame boundary's return address `0x08ab33a0`
 
 The `jal sceKernelGetSystemTimeWide` at `0x08ab3398`, the first call after the frame wait loop:

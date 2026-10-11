@@ -384,6 +384,9 @@
     <ClCompile Include="LCS\LCSState.cpp">
       <Filter>LCS</Filter>
     </ClCompile>
+    <ClCompile Include="LCS\LCSRoute.cpp">
+      <Filter>LCS</Filter>
+    </ClCompile>
     <ClCompile Include="LCS\LCSFrontEnd.cpp">
       <Filter>LCS</Filter>
     </ClCompile>
@@ -1756,6 +1759,9 @@
       <Filter>LCS</Filter>
     </ClInclude>
     <ClInclude Include="LCS\LCSState.h">
+      <Filter>LCS</Filter>
+    </ClInclude>
+    <ClInclude Include="LCS\LCSRoute.h">
       <Filter>LCS</Filter>
     </ClInclude>
     <ClInclude Include="LCS\LCSSaveDialog.h">
