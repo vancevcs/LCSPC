@@ -88,6 +88,30 @@ What the hints said is drawn by this fork instead, in the same strip (the PSP pi
 lines, through `CalculateDisplayOutputRect`): the keys that work on that page (input.md "The game's
 own menu"). The zone name the map draws there stays.
 
+**The pages with a mouse, and from the first look** (reported: the map didn't move with the mouse
+as VCS's does, STATS didn't scroll, BRIEF was a blank page that took nothing):
+
+- **The map drags.** With the left button held on the map page, the mouse moves the map's centre
+  (`+0x474` / `+0x478`, in the PSP's screen units around (240, 114)) a quarter of a unit a count:
+  four 1080p pixels a unit, so about a pixel a count, and the city follows the pointer. It is kept
+  within the game's own scroll limit, size - 130 either side of the middle (`0x08adae64`). Nothing
+  derives the centre, so a written one stays. Measured on a settled page: 40 counts down moved the
+  centre +10.0, 40 right +10.0; 20 units moved the picture 80 px.
+- **The wheel scrolls STATS and BRIEF**: two STATS lines or one brief a notch, written into the
+  offset each page's draw scrolls by (`0x08b59cb4`, `0x08b59c40`), which the game moves only while
+  a direction is held. Down brings up what is below, as a PC list does; the game's own down moves
+  STATS the other way.
+- **STATS opens at its first line.** Its offset is kept from the last look, and the first look
+  showed the first line alone at the bottom of an empty page; the bridge writes 136, the first line
+  at the top, as the page arrives.
+- **An empty BRIEF says so.** It lists the missions' dialogue since the game was loaded
+  (`CMessages::PreviousBriefs`), so after a load there is nothing on it. This fork then draws NO
+  BRIEFS YET and what will go there over the page.
+
+Measured after a fresh boot into a save: STATS opened at 136 with its first line at the top, a
+notch down took it to 166 and the list up two lines; BRIEF's 20 entries all read 0 and the page
+showed NO BRIEFS YET. With a brief on it (a cheat's), BRIEF drew it as before.
+
 **Back comes back here.** Escape or Backspace on one of those pages shuts the game's menu (Start,
 watched until `MenuActive` drops) and this menu comes back on the row it was opened from; the next
 Escape is the world. `CreatePauseScreen` makes that decision: it returns null when it closed the
@@ -141,9 +165,39 @@ loading it back came up in the Saint Mark's safe house with `$6` 1 and `$560` 0.
 **A save the game names after its last mission** shows here by that name; one with none (only a
 test's fake key) shows as SAVED GAME.
 
+**Never the cheat warning.** With a cheat used (every cheat sets the byte at `0x08b56432`) the save
+menu opened on page 11, "Warning! One or more cheats have been activated" (`FET_WRN`), instead of
+the save list. That page waits for a press the auto-save never makes, and the game sat on it with
+nothing answering but Alt + F4 (reported). Its only caller (`0x08ad9494`) branches on the byte;
+the branch at `0x08ad94b4` is made unconditional (`kLCSSaveCheatWarning`), every tick, because a
+savestate brings the game's op back. So the save list always opens, for the auto-save and for a
+safe house's save alike. Measured: weapon set 1 took the byte from 0 to 1, and the save request then
+opened page 12 and stayed on it for the 3 s watched.
+
+## Boot
+
+The game opens on two movies, the logos and then the credits (about 26 s), then the legal card, the
+firmware's "Loading from Memory Stick" while the newest save autoloads, and its own loading screen.
+Both of these were in the VCS fork and reported missing here:
+
+- **Any key skips the intro**, Shift included: every key and mouse button but Escape (PPSSPP's
+  pause), the F keys and the wheel, while the movies play (`LCS::IntroPlaying`). The press goes
+  nowhere else, and its release with it. Cross skips the movie that is playing, so a skip taps
+  Cross, 6 vblanks in every 30, until both are gone, for at most 15 s (`IntroTick`).
+- **LOADING covers the rest.** The movies end where the game opens `ENTRIES.DAT`, by sector
+  (`disc0:/sce_lbn0x6450_size0x30a8`), once per boot; `sceIoOpen` hands every name to
+  `LCS::NoteFileOpen`. That raises the curtain with LOADING, which comes down as any other does, 30
+  game frames into the world. A world that runs (a savestate boots straight into one) is past the
+  intro.
+
+Measured on a boot into a save, captured every 0.8 s: one Shift press at 4.2 s, during the logos;
+the intro over 0.8 s later; LOADING up by 5.7 s; the world running at 9.3 s and the curtain gone by
+11.8 s. Untouched, the credits end at 26 s, and `ENTRIES.DAT` is opened that moment.
+
 ## The curtain
 
-Over every sequence the player didn't watch: the menu's backdrop over the whole screen and LOADING
+Over every sequence the player didn't watch, and at boot from the intro's end to the world (Boot):
+the menu's backdrop over the whole screen and LOADING
 or SAVING bottom left with walking dots (the VCS fork's loading screen with LCS's backdrop), or the
 backdrop alone while a page is opened or closed. Drawn by EmuScreen (`DrawLCSOverlay`), not pushed
 as a screen, because a screen would pause the game it is hiding. Keys are swallowed while it is up

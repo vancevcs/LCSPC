@@ -71,9 +71,14 @@ alone is the game's look-around and R alone its lock-on, so neither glances on f
 `CColModel *` at `+0x14`, box at `+0x10`/`+0x20`): pivot at 0.95 of the box top, distance
 `(5.0 + 0.65 * length)`, x 0.8 / 1.35 at TheCamera's car zoom (`+0xcc`) 1 / 3. Pitch +0.90 / -1.30;
 the camera position orbits at most 0.35 below the pivot, so looking further up tilts the view.
-Q / E / C (the game's L / R / both, read from `Pads[0]` NewState, so a pad glances too) look left,
-right and behind, and letting go returns behind the car. After 1.5 s with no look, a vehicle moving
-faster than 3 units/s swings back behind itself.
+Q / E / C look left, right and behind, and letting go returns behind the car. The camera takes
+the game's own looks from `Pads[0]` NewState, so a pad glances too: in the game's configurations 2
+and 3 (the default, and what the keyboard holds the game in) L with the stick left or right past
+10, or down past 10 within 30 of the middle, as the game's own getters (`0x08a976cc`, `0x08a978a0`,
+`0x08a97a78`); in 0 and 1 L, R and both (input.md "The game's own layout"). The first build read L
+and R alone, configuration 0's looks. Measured on the car fixture: E put the camera 1.56 rad right
+of the car, Q 1.58 left, C and Q + E 3.11 behind. After 1.5 s with no look, a vehicle moving faster
+than 3 units/s swings back behind itself.
 
 The mouse goes to `ChaseCamAddLook` from the frame boundary (`LCS::OnFrameBoundary`). On foot the
 LCSInput takeover (spring, yaw correction, nudge) stays in while mode 4 has the mouse, so the angles

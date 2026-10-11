@@ -41,6 +41,8 @@ NOTICE line, and Debug -> LCS shows the reason.
 | `UISound::LCS_*` | `Common/UI/Root.h`, `LoadDefaultSample` in `UI/BackgroundAudio.cpp` | the game's own menu sounds, added rather than swapped in so PPSSPP's menus never play them |
 | `LCS::PeekSaveDialog()` | `Core/HLE/sceUtility.cpp` (the dialog is file-static there) and `PSPSaveDialog::LCSPeek` | what the firmware's savedata dialog shows, read-only, so the bridge can drive a load or a save closed-loop (front-end.md) |
 | the language the game is told | `sceUtilityGetSystemParamInt`'s `INT_LANGUAGE` arm | LCS picks its text from the PSP's system language at boot; the Language row decides it for LCS only |
+| `LCS::NoteFileOpen()` | `sceIoOpen()`, before `__IoOpen` | the game opens `ENTRIES.DAT` the moment its intro movies are over: LOADING goes up there (front-end.md "Boot") |
+| `LCS::KeyboardLayerOn()` | `Windows/MainWindow.cpp`, the `SC_KEYMENU` arm of `WM_SYSCOMMAND` | Alt walks; without this Windows focuses the menu bar on Alt's release, which upstream only prevents when PPSSPP maps an Alt (input.md) |
 | the curtain's key gate | `NativeKey`, after the screen manager check | while a sequence walks the game's menu, key presses are swallowed; releases go through |
 | `CreatePauseScreen`, `LCSMenuDue`, `DrawLCSOverlay` | EmuScreen's pause sites, `update`, `renderUI` (and `hasVisibleUI`, `deviceLost`) | the pause may close the game's own menu instead of opening ours; ours comes back after Back from a game page; the curtain, the hint line and the GPS line over the game |
 

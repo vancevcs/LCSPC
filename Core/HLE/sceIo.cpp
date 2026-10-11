@@ -74,6 +74,7 @@
 // For EMULATOR_DEVCTL__GET_AXIS/VKEY
 #include "Core/HLE/Plugins.h"
 #include "Input/KeyCodes.h"
+#include "Core/LCS/LCSFrontEnd.h"  // Fork-specific
 
 // TODO: Should actually report the real free space like we do in the savedata code.
 static constexpr int FAKE_FREE_SPACE = (1024 + 512) * 1024 * 1024;
@@ -1634,6 +1635,9 @@ static u32 sceIoOpen(const char *filename, int flags, int mode) {
 		hleEatCycles(48000);
 		return hleLogError(Log::sceIo, IoDispatchDisabledError(filename), "dispatch disabled");
 	}
+
+	// Fork-specific: LCS raises its loading screen on the file it opens as its intro ends.
+	LCS::NoteFileOpen(filename);
 
 	int error;
 	FileNode *f = __IoOpen(error, filename, flags, mode);

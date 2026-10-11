@@ -1408,6 +1408,7 @@ static std::unique_ptr<LCSMenuArt> g_overlayArt;
 
 static const FontStyle kCurtainFont(FontFamily::Display, 44, FontStyleFlags::Default);
 static const FontStyle kStripFont(FontFamily::SansSerif, 22, FontStyleFlags::Default);
+static const FontStyle kBriefFont(FontFamily::Display, 40, FontStyleFlags::Default);
 static constexpr float kCurtainFadeSeconds = 0.5f;
 
 void ReleaseLCSOverlayArt() {
@@ -1448,9 +1449,9 @@ static void DrawCurtain(UIContext &dc, float alpha, const char *word) {
 static void DrawPageHints(UIContext &dc, int page) {
 	const char *hint = "ESC - BACK";
 	if (page == LCS::kLCSPageMap) {
-		hint = "WASD - SCROLL     WHEEL / Q E - ZOOM     F - MARKER     ENTER - LEGEND     ESC - BACK";
+		hint = "WASD / DRAG - SCROLL     WHEEL / Q E - ZOOM     F - MARKER     ENTER - LEGEND     ESC - BACK";
 	} else if (page == LCS::kLCSPageBrief || page == LCS::kLCSPageStats) {
-		hint = "W / S - SCROLL     ESC - BACK";
+		hint = "W / S / WHEEL - SCROLL     ESC - BACK";
 	}
 	const DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(g_display.GetDeviceOrientation());
 	const FRect frame = GetScreenFrame(config.bIgnoreScreenInsets, g_display.pixel_xres, g_display.pixel_yres);
@@ -1464,6 +1465,17 @@ static void DrawPageHints(UIContext &dc, int page) {
 	const float right = (rc.x + rc.w) * sx - kTitleLeft * 0.5f;
 	dc.SetFontStyle(kStripFont);
 	dc.DrawTextShadow(hint, right, (stripTop + stripBottom) * 0.5f, kHintColor, ALIGN_VCENTER | ALIGN_RIGHT);
+	// BRIEF lists the missions' dialogue since the game was loaded, so after a load it is an empty
+	// page, which read as broken (reported): say what goes there.
+	if (page == LCS::kLCSPageBrief && LCS::BriefEmpty()) {
+		const float cx = (rc.x + rc.w * 0.5f) * sx;
+		const float cy = (rc.y + rc.h * (112.0f / 272.0f)) * sy;
+		dc.SetFontStyle(kBriefFont);
+		dc.DrawTextShadow("NO BRIEFS YET", cx, cy, kItemColor, ALIGN_HCENTER | ALIGN_BOTTOM);
+		dc.SetFontStyle(kStripFont);
+		dc.DrawTextShadow("The dialogue of the missions you play shows here.", cx, cy + 8.0f, kHintColor,
+			ALIGN_HCENTER | ALIGN_TOP);
+	}
 	dc.Flush();
 }
 

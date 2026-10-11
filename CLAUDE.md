@@ -70,7 +70,8 @@ tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys and mouse 
 `Core/HLE/ReplaceTables.*`; the memory partition in `InitMemorySizeForGame`; SMAA in
 `DrawEngineVulkan::Flush`; the pause screen in `CreatePauseScreen` (EmuScreen), the curtain and
 the GPS line in `DrawLCSOverlay` (EmuScreen::renderUI); the savedata dialog in
-`LCS::PeekSaveDialog` (sceUtility); compat flag in Core/Compatibility.* + assets/compat.ini. Full
+`LCS::PeekSaveDialog` (sceUtility); the intro's end in `sceIoOpen`; Alt kept from Windows' menu bar
+in `MainWindow`'s `SC_KEYMENU`; compat flag in Core/Compatibility.* + assets/compat.ini. Full
 table: docs/lcs/architecture.md.
 
 ## Working rules

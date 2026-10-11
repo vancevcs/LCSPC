@@ -91,6 +91,26 @@ bool TakeMenuAfterClose();
 // The save slot the auto-save writes (the game's last), or -1 before the save list was seen.
 int AutoSaveSlot();
 
+// --- Boot: the intro before the world ---
+
+// The game's movies (logos, credits) are playing: from boot until they are over or a world runs.
+bool IntroPlaying();
+// Skip them: Cross tapped until both are gone (a tap skips the one playing). Any thread.
+void RequestIntroSkip();
+// From sceIoOpen, emu thread. The file the game opens as the movies end raises LOADING, which comes
+// down once the world (the autoloaded save, or the story's start) has run a moment.
+void NoteFileOpen(const char *filename);
+
+// --- The game's own pages, for the input layer ---
+
+// Emu thread. STATS or BRIEF scrolled by wheel notches (positive up); false when neither has focus.
+bool ScrollGamePage(int notches);
+// Emu thread. The map page moved by a mouse movement in counts; false when it isn't up.
+bool DragMap(float dx, float dy);
+// Any thread: the map page has focus (a drag wants the mouse); BRIEF is up with nothing on it.
+bool MapPageUp();
+bool BriefEmpty();
+
 // --- Emu thread ---
 
 // Advances the bridge, the auto-save watch, the curtain and the game's own settings. From

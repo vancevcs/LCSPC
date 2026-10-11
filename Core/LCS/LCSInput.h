@@ -82,6 +82,9 @@ int PadTapsPending();
 bool ParsePadSequence(const std::string &text, std::vector<u32> *out, std::string *bad);
 
 InputContext CurrentInputContext();
+// The keyboard is this layer's (LCS active, KeyboardMouse on): Windows' Alt menu stands down, since
+// Alt walks (MainWindow's SC_KEYMENU).
+bool KeyboardLayerOn();
 u32 AppliedButtons();
 bool MouseLookEngaged();
 

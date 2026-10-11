@@ -29,6 +29,7 @@
 #include "Core/HLE/sceCtrl.h"
 #include "Core/LCS/LCSAddresses.h"
 #include "Core/LCS/LCSFrontEnd.h"
+#include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSMemory.h"
 #include "Core/LCS/LCSSaveDialog.h"
 #include "Core/LCS/LCSSettings.h"
@@ -60,6 +61,10 @@ std::atomic<bool> g_dialogUp{false};
 std::atomic<bool> g_menuAfterClose{false};
 std::atomic<int> g_curtain{(int)CurtainKind::None};
 std::atomic<int> g_autoSaveSlot{-1};
+std::atomic<bool> g_introPlaying{false};
+std::atomic<bool> g_introSkipRequested{false};
+std::atomic<bool> g_mapPageUp{false};
+std::atomic<bool> g_briefEmpty{false};
 
 // --- Emu thread ---
 
@@ -330,6 +335,49 @@ void CurtainTick(const LCSState &state) {
 	}
 }
 
+// --- Boot: the intro, its skip, and LOADING after it ---
+//
+// The game plays two movies before anything else: the logos, then the credits (about 26 s). Cross
+// skips the one playing, so a skip taps Cross until both are gone, and any key asks for it (the
+// input layer: LCS::RequestIntroSkip). The movies end where the game opens ENTRIES.DAT, once per
+// boot; after that come the legal card, the firmware's "Loading from Memory Stick" while the newest
+// save autoloads, and the game's own loading screen. The curtain covers all three, as the VCS
+// fork's does, and comes down 30 game frames into the world. Measured, two boots: the first Cross
+// at 4.7 s went from the logos to the credits, the second at 9.5 s to the legal card, the world at
+// 14.2 s; untouched, the credits end at 26 s and ENTRIES.DAT is opened that moment.
+
+bool g_introOver = false;
+u32 g_introMask = 0;
+int g_introSkipLeft = 0;
+
+// A mouse count in the map's units (the PSP's screen): about one pixel of a 1080p picture.
+constexpr float kMapDragUnitsPerCount = 0.25f;
+
+constexpr int kIntroSkipVblanks = 900;   // tapping for at most 15 s
+constexpr int kIntroTapPeriod = 30;      // a tap every half second...
+constexpr int kIntroTapHold = 6;         // ...held 6 vblanks
+
+void IntroTick(const LCSState &state) {
+	// A world that runs is past the intro (a savestate boots straight into one).
+	if (!g_introOver && state.frameCounter.value_or(0) != 0) {
+		g_introOver = true;
+	}
+	g_introPlaying.store(!g_introOver, std::memory_order_relaxed);
+	if (g_introSkipRequested.exchange(false, std::memory_order_relaxed) && !g_introOver && g_introSkipLeft == 0) {
+		g_introSkipLeft = kIntroSkipVblanks;
+		NOTICE_LOG(Log::System, "LCS front end: skipping the intro");
+	}
+	g_introMask = 0;
+	if (g_introSkipLeft > 0) {
+		if (g_introOver) {
+			g_introSkipLeft = 0;
+		} else {
+			g_introMask = (kIntroSkipVblanks - g_introSkipLeft) % kIntroTapPeriod < kIntroTapHold ? CTRL_CROSS : 0;
+			g_introSkipLeft--;
+		}
+	}
+}
+
 // --- Making a save a save ---
 //
 // The request byte opens the save menu; it doesn't prepare a save. The safe house's routine does
@@ -469,6 +517,11 @@ void Arrive(const FeState &fe) {
 	case Req::Page:
 		SetOwned(true, g_wantPage);
 		LowerCurtain();
+		// STATS opens where it was left, which on a first look is the first line alone at the
+		// bottom of an empty page: from the top instead.
+		if (g_wantPage == kLCSPageStats) {
+			WriteFloat(kLCSStatsScroll, kLCSStatsScrollTop);
+		}
 		g_phase = Phase::Owned;
 		g_stepPressed = false;
 		g_busy.store(false, std::memory_order_relaxed);
@@ -1010,6 +1063,11 @@ void GamePrefsTick(const LCSState &state) {
 	ApplyPref<u8>(kLCSHudOn, &ReadU8, &WriteU8, s.gameHud ? 1 : 0);
 	ApplyPref<s32>(kLCSRadarMode, &ReadS32Opt, &WriteS32, s.gameRadar);
 	ApplyPref<u8>(LookupAddr(LCSAddr::InvertLook).address, &ReadU8, &WriteU8, s.gameInvertLook ? 1 : 0);
+	// The keyboard's car keys are the game's configuration 2 (kLCSPadModeOffset): R the handbrake,
+	// L and the stick the looks. A save carries its own; the game's default is 2.
+	if (s.keyboardMouse) {
+		ApplyPref<u16>(kLCSPads + kLCSPadModeOffset, &ReadU16, &WriteU16, kLCSPadModeKeyboard);
+	}
 	const u32 lookSensitivity = LookupAddr(LCSAddr::LookSensitivity).address;
 	const std::optional<float> look = ReadFloat(lookSensitivity);
 	if (look && std::fabs(*look - s.padLookSensitivity) > 1e-6f) {
@@ -1118,9 +1176,23 @@ void FrontEndTick() {
 	SaveDialogPeek peek;
 	g_dialogUp.store(PeekSaveDialog(&peek), std::memory_order_relaxed);
 
+	IntroTick(state);
 	CurtainTick(state);
 	MissionWatchTick(state, fe);
 	GamePrefsTick(state);
+	// Every tick, as a savestate brings the game's op back: the save menu never opens on the cheat
+	// warning (kLCSSaveCheatWarning).
+	SetCodeWord(kLCSSaveCheatWarning, true);
+	const bool inPage = fe.valid && fe.up && fe.inPage;
+	g_mapPageUp.store(inPage && fe.page == kLCSPageMap, std::memory_order_relaxed);
+	bool briefEmpty = false;
+	if (inPage && fe.page == kLCSPageBrief) {
+		briefEmpty = true;
+		for (int i = 0; i < kLCSPreviousBriefCount && briefEmpty; i++) {
+			briefEmpty = ReadU32(kLCSPreviousBriefs + (u32)i * kLCSPreviousBriefStride).value_or(0) == 0;
+		}
+	}
+	g_briefEmpty.store(briefEmpty, std::memory_order_relaxed);
 
 	// A savestate taken while a page was showing brings the hint patch back with it.
 	if (g_phase == Phase::Idle && !g_owned.load(std::memory_order_relaxed) &&
@@ -1161,7 +1233,84 @@ void FrontEndTick() {
 }
 
 u32 FrontEndButtonMask() {
-	return g_mask;
+	return g_mask | g_introMask;
+}
+
+bool IntroPlaying() {
+	return g_introPlaying.load(std::memory_order_relaxed);
+}
+
+void RequestIntroSkip() {
+	g_introSkipRequested.store(true, std::memory_order_relaxed);
+}
+
+void NoteFileOpen(const char *filename) {
+	if (!IsActive() || g_introOver || !filename || !equalsNoCase(filename, kLCSIntroOverFile)) {
+		return;
+	}
+	g_introOver = true;
+	g_introPlaying.store(false, std::memory_order_relaxed);
+	RaiseCurtain(CurtainKind::Loading);
+	// Nothing of ours to wait for: it comes down once the world has run kCurtainSettleFrames.
+	g_curtainSequenceDone = true;
+	NOTICE_LOG(Log::System, "LCS front end: the intro is over (%s), LOADING until the world runs", filename);
+}
+
+bool ScrollGamePage(int notches) {
+	if (notches == 0) {
+		return false;
+	}
+	const FeState fe = ReadFe();
+	if (!fe.valid || !fe.up || !fe.inPage) {
+		return false;
+	}
+	// Two STATS lines, or one brief, a notch, the way a PC list scrolls: the wheel down brings up what
+	// is below. (The game's own down moves STATS the other way, the text down; BRIEF's goes this way.)
+	u32 address = 0;
+	float step = 0.0f;
+	if (fe.page == kLCSPageStats) {
+		address = kLCSStatsScroll;
+		step = -2.0f * kLCSStatsLine;
+	} else if (fe.page == kLCSPageBrief) {
+		address = kLCSBriefScroll;
+		step = kLCSBriefEntry;
+	} else {
+		return false;
+	}
+	const std::optional<float> offset = ReadFloat(address);
+	if (offset) {
+		WriteFloat(address, *offset + (float)notches * step);
+	}
+	return true;
+}
+
+bool DragMap(float dx, float dy) {
+	const FeState fe = ReadFe();
+	if (!fe.valid || !fe.up || !fe.inPage || fe.page != kLCSPageMap) {
+		return false;
+	}
+	const std::optional<float> x = ReadFloat(kLCSFrontEnd + kLCSFeMapCentreXOffset);
+	const std::optional<float> y = ReadFloat(kLCSFrontEnd + kLCSFeMapCentreYOffset);
+	const std::optional<float> size = ReadFloat(kLCSFrontEnd + kLCSFeMapHalfSizeOffset);
+	if (!x || !y || !size) {
+		return true;
+	}
+	// The city follows the pointer (a drag right brings it right, the opposite of what a held right
+	// does), kept where the game's own scroll keeps it.
+	const float reach = std::max(*size - kLCSMapEdge, 0.0f);
+	WriteFloat(kLCSFrontEnd + kLCSFeMapCentreXOffset,
+		std::clamp(*x + dx * kMapDragUnitsPerCount, kLCSMapCentreX - reach, kLCSMapCentreX + reach));
+	WriteFloat(kLCSFrontEnd + kLCSFeMapCentreYOffset,
+		std::clamp(*y + dy * kMapDragUnitsPerCount, kLCSMapCentreY - reach, kLCSMapCentreY + reach));
+	return true;
+}
+
+bool MapPageUp() {
+	return g_mapPageUp.load(std::memory_order_relaxed);
+}
+
+bool BriefEmpty() {
+	return g_briefEmpty.load(std::memory_order_relaxed);
 }
 
 bool FrontEndDriving() {
@@ -1191,6 +1340,13 @@ void FrontEndReset() {
 	g_haveMission = false;
 	g_autoSaveArmed = false;
 	g_savePrepared = false;
+	g_introOver = false;
+	g_introMask = 0;
+	g_introSkipLeft = 0;
+	g_introPlaying.store(false, std::memory_order_relaxed);
+	g_introSkipRequested.store(false, std::memory_order_relaxed);
+	g_mapPageUp.store(false, std::memory_order_relaxed);
+	g_briefEmpty.store(false, std::memory_order_relaxed);
 }
 
 const char *FrontEndStatus() {

@@ -77,6 +77,7 @@
 #include "Windows/MainWindowMenu.h"
 #include "GPU/GPUCommon.h"
 #include "UI/PauseScreen.h"
+#include "Core/LCS/LCSInput.h"  // Fork-specific
 
 #define MOUSEEVENTF_FROMTOUCH_NOPEN 0xFF515780 //http://msdn.microsoft.com/en-us/library/windows/desktop/ms703320(v=vs.85).aspx
 #define MOUSEEVENTF_MASK_PLUS_PENTOUCH 0xFFFFFF80
@@ -1130,7 +1131,9 @@ namespace MainWindow {
 		case WM_SYSCOMMAND:
 			// Disable Alt key for menu if it's been mapped.
 			if (wParam == SC_KEYMENU && (lParam >> 16) <= 0) {
-				if (KeyMap::IsKeyMapped(DEVICE_ID_KEYBOARD, NKCODE_ALT_LEFT) || KeyMap::IsKeyMapped(DEVICE_ID_KEYBOARD, NKCODE_ALT_RIGHT)) {
+				// Fork-specific: LCS walks with Alt.
+				if (KeyMap::IsKeyMapped(DEVICE_ID_KEYBOARD, NKCODE_ALT_LEFT) || KeyMap::IsKeyMapped(DEVICE_ID_KEYBOARD, NKCODE_ALT_RIGHT) ||
+					LCS::KeyboardLayerOn()) {
 					return 0;
 				}
 			}

@@ -397,6 +397,13 @@ inline constexpr u32 kLCSPads = 0x08b89da0;
 inline constexpr u32 kLCSPadStride = 0xc0;
 inline constexpr u32 kLCSPadNewState = 0x02;
 inline constexpr u32 kLCSPadOldState = 0x34;
+// CPad::Mode (u16), the game's controller configuration 0..3, the text's C0..C3 tokens. A save
+// carries it (0x088b221c), RESET GAME SETTINGS sets 2 (0x08ade44c), and the keyboard is built on 2:
+// on foot it is 0's layout, in a vehicle R is the handbrake (GetHandBrake 0x08a97e3c; 0 and 1 want
+// Square + Cross) and the looks are L with the stick (0x08a976cc, 0x08a978a0, 0x08a97a78; 0 and 1
+// look with L, R and L + R). 1 and 3 swap the stick and the d-pad. Read 2 in the fixtures.
+inline constexpr u32 kLCSPadModeOffset = 0x82;
+inline constexpr u16 kLCSPadModeKeyboard = 2;
 enum LCSPadField : u32 {
 	kPadLeftX = 0x00, kPadLeftY = 0x02, kPadRightX = 0x04, kPadRightY = 0x06,
 	kPadL1 = 0x08, kPadL2 = 0x0a, kPadR1 = 0x0c, kPadR2 = 0x0e,
@@ -451,6 +458,37 @@ inline constexpr int kLCSTabPageSpanish[kLCSTabCount + 1] = { -1, 7, 2, 1, 0, 4,
 // while the bridge shows a page; the tabs are already gone once a page has focus (the strip is
 // only drawn while +0x590 is 0).
 inline constexpr LCSCodeWord kLCSMenuHintsCall = { 0x08AE5114, 0x0E2B7C30, 0x00000000 };
+// The save menu opens on page 11, "Warning! One or more cheats have been activated" (FET_WRN), when
+// the byte at 0x08b56432 is set (every cheat sets it), else on 12, the save list (0x08ad9494, the
+// only caller that asks for 11). Its `beqz` made a `b`: the save list always. The warning takes a
+// press the auto-save never sent, and the save stalled behind it (reported, 2026-10-11).
+inline constexpr LCSCodeWord kLCSSaveCheatWarning = { 0x08AD94B4, 0x10A00005, 0x10000005 };
+// The map page draws its rect centred on (+0x474, +0x478) with half-size +0x470, in the PSP's
+// screen units, and its scroll keeps |x - 240| and |y - 114| within size - 130 (0x08adae64; past
+// that it moves the cursor at +0x47c / +0x480 instead). Not derived: a written centre stays.
+inline constexpr u32 kLCSFeMapCentreXOffset = 0x474;  // float
+inline constexpr u32 kLCSFeMapCentreYOffset = 0x478;  // float
+inline constexpr u32 kLCSFeMapHalfSizeOffset = 0x470; // float
+inline constexpr float kLCSMapCentreX = 240.0f;
+inline constexpr float kLCSMapCentreY = 114.0f;
+inline constexpr float kLCSMapEdge = 130.0f;
+// STATS and BRIEF (their draws, 0x08ae366c and 0x08ae490c) scroll by an offset that moves
+// 30 / speed a frame while up or down is held, and at no other time. A STATS line is 15 apart and
+// sits at i * 15 + 196 - offset (wrapped), so 136 puts the first at the top; it opened wherever it
+// was left, with the first line alone at the bottom.
+inline constexpr u32 kLCSStatsScroll = 0x08B59CB4;    // float
+inline constexpr float kLCSStatsScrollTop = 136.0f;
+inline constexpr float kLCSStatsLine = 15.0f;
+inline constexpr u32 kLCSBriefScroll = 0x08B59C40;    // float
+inline constexpr float kLCSBriefEntry = 31.0f;        // 20 an entry, 11 more a wrapped line
+// CMessages::PreviousBriefs, what BRIEF lists: 20 of 32 bytes, the text pointer first (0 empty). The
+// dialogue of the missions since the game was loaded; a save loads none.
+inline constexpr u32 kLCSPreviousBriefs = 0x08DD1090;
+inline constexpr u32 kLCSPreviousBriefStride = 32;
+inline constexpr int kLCSPreviousBriefCount = 20;
+// The file the game opens once per boot, the moment its two intro movies (logos, credits) are over:
+// /PSP_GAME/USRDIR/ENTRIES.DAT, by sector and size as the game asks for it (LCSFrontEnd's boot).
+inline constexpr const char *kLCSIntroOverFile = "disc0:/sce_lbn0x6450_size0x30a8";
 
 // register_mission_passed (031D, 0x08a24740) copies the mission's GXT key here (8 bytes) and adds
 // one to the counter; register_oddjob_mission_passed (059A) adds one and leaves the key. The key is

@@ -159,8 +159,14 @@ offsets shifted by 4. VCS: array `+0x58c`, slot byte `+0x789`.
   and `(Down - Up) / 2` from the d-pad, and the d-pad getters read `+0x18..+0x1e` instead. This is
   VCS's `CameraInputMode` mechanism. Read 0 in play.
 - `0x08b56433` (u8) inverts `LookAroundUpDown`.
-- `CPad::Mode` at `+0x82` (`LookAround*` read the stick only while it is below 4; read 2 in play),
-  `DisablePlayerControls` at `+0x86` (u16; read 160 while Toni was free to walk and enter the car,
+- `CPad::Mode` at `+0x82` (u16): the controller configuration 0..3, the help text's `C0`..`C3`
+  token sets (`LookAround*` read the stick only while it is below 4). **2 is the default**: RESET
+  GAME SETTINGS sets 2 (`0x08ade44c`), a save carries its own (`0x088b221c`), and the fixtures and
+  the saves on hand read 2. In a vehicle 2 and 3 take R for the handbrake (GetHandBrake
+  `0x08a97e3c`; 0 and 1 Square + Cross) and L with the stick for the looks (`0x08a976cc` left,
+  `0x08a978a0` right, `0x08a97a78` behind; 0 and 1 L, R, L + R); 1 and 3 swap the stick and the
+  d-pad. Written 0 live, the input layer put 2 back (input.md "The game's own layout").
+- `DisablePlayerControls` at `+0x86` (u16; read 160 while Toni was free to walk and enter the car,
   so it is probably a bit mask, not a counter).
 - **Live:** holding D-Up over the debugger set `+0x12` (Pads[0]) to 255, D-Right `+0x18`, L `+0x0a`,
   Cross `+0x2a`. **Start set nothing** in `NewState` within 0.15 s; not explained yet.
@@ -354,6 +360,8 @@ counter keeps advancing while it is up.
 | `+0x000` s32 | the tab the strip is on, 1..8 | live: 1 on opening, right stepped 1, 2, 3, 4, 5, 1 |
 | `+0x018` s32 | the menu's fade, 255 when done; input waits for it | live: 150 -> 255 over 0.1 s after opening |
 | `+0x141` u8 | input enabled: set once the d-pad and stick are released and the fade is done; every direction getter (`0x08ad954c`, `..95b0`, `..9614`, `..96fc`) returns 0 while clear | live: 0 for ~0.2 s after opening |
+| `+0x470` f32 | the map page's half-size, PSP screen units; the zoom | live: 399.9 |
+| `+0x474` / `+0x478` f32 | the map's centre, PSP screen units; the scroll keeps it within size - 130 of (240, 114) (`0x08adae64`), and moves the cursor at `+0x47c` / `+0x480` past that | written live: the map moved and stayed; 20 units of y moved the picture 80 px at 1080p |
 | `+0x46b` u8 | the save request: `activate_save_menu` (03DD, `0x089e8310`) sets it, `has_save_game_finished` (03DE) is `!(MenuActive or it)` | written over the debugger: the save list opened on page 12 |
 | `+0x564` s32 | the page, an index into the page table | live: map 7, brief 2, game 1, stats 0, the save list 12 |
 | `+0x568` s32 | the selected entry | live: LOAD GAME 0, NEW GAME 1; YES 2 on the questions |
@@ -372,6 +380,24 @@ controls last). The neighbour tables: `0x08b5905c` and, for language 4, `0x08b59
 Start opens and closes the menu from anywhere in it (closing measured from inside a page).
 
 The hints: `FUN_08adf0c0` draws every one, called once, from `0x08ae5114` (`jal`, `0e2b7c30`).
+
+The cheat warning: the save request opens page 11 (`FET_WRN`) while the byte at **`0x08b56432`** is
+set (every cheat sets it), else 12. The one caller that asks for 11 is `0x08ad9494`; its `beqz` at
+**`0x08ad94b4`** (`10a00005`) made `b` (`10000005`) opens the save list always. Live: weapon set 1
+set the byte 0 -> 1, and with the patch the request opened page 12.
+
+STATS and BRIEF scroll by an offset each, f32: **`0x08b59cb4`** and **`0x08b59c40`**, read by their
+draws (`0x08ae366c`, `0x08ae490c`) and moved 30 / speed a frame only while up or down is held. A
+STATS line sits at `i * 15 + 196 - offset`, wrapped, so 136 puts the first at the top; a brief takes
+20, and 11 more a wrapped line. Written live: 136 put the first line at the top, 166 two lines on.
+
+`CMessages::PreviousBriefs` **`0x08dd1090`**: what BRIEF lists, 20 entries 32 bytes apart, the text
+pointer first (0 empty) - the missions' dialogue since the game was loaded. Read live: all 0 after
+a boot into a save; a cheat's brief showed on the page.
+
+The intro's end: the game opens `/PSP_GAME/USRDIR/ENTRIES.DAT`, by sector
+(`disc0:/sce_lbn0x6450_size0x30a8`), once per boot, the moment its two movies are over. Live: at
+26 s untouched, 0.8 s after a skip.
 
 ### Missions passed - static and live
 

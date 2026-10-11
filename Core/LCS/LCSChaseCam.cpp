@@ -485,11 +485,36 @@ CamVec KeepOutOfSubject(CamKind kind, CamVec p) {
 	return p;
 }
 
-// The game's own look left and right: L and R in pad 0's NewState, whatever pressed them (Q, E
-// and C here, or a pad). Read from the game rather than from the keys, so a pad glances too.
-bool GlanceHeld(bool left) {
-	const u32 field = left ? kPadL1 : kPadR1;
-	return ReadU16(kLCSPads + kLCSPadNewState + field).value_or(0) != 0;
+// The game's own looks, read from pad 0's NewState whatever pressed them (Q, E and C here, or a
+// pad), so a pad glances too. In a vehicle in configurations 2 and 3 (the keyboard's, and the
+// game's default) a look is L with the stick: left and right past 10, behind with the stick down
+// past 10 and within 30 of the middle (the game's getters, 0x08a976cc, 0x08a978a0, 0x08a97a78). In
+// 0 and 1, and on foot in every configuration, it is L, R and both.
+enum class Glance { None, Left, Right, Behind };
+
+Glance GlanceFromPad(bool vehicle) {
+	const u32 state = kLCSPads + kLCSPadNewState;
+	const bool l = ReadU16(state + kPadL1).value_or(0) != 0;
+	const bool r = ReadU16(state + kPadR1).value_or(0) != 0;
+	if (vehicle && ReadU16(kLCSPads + kLCSPadModeOffset).value_or(0) >= 2) {
+		if (!l) {
+			return Glance::None;
+		}
+		const int x = (s16)ReadU16(state + kPadLeftX).value_or(0);
+		const int y = (s16)ReadU16(state + kPadLeftY).value_or(0);
+		if (std::abs(x) < 30 && y > 10) {
+			return Glance::Behind;
+		}
+		return x < -10 ? Glance::Left : (x > 10 ? Glance::Right : Glance::None);
+	}
+	if (l && r) {
+		return Glance::Behind;
+	}
+	// On foot only look behind: L alone is the game's look-around, R alone its lock-on.
+	if (!vehicle) {
+		return Glance::None;
+	}
+	return l ? Glance::Left : (r ? Glance::Right : Glance::None);
 }
 
 void InvalidateWord(u32 address) {
@@ -935,12 +960,10 @@ int Hook_lcs_camera_prepare() {
 	PitchLimits(kind, &lo, &hi);
 	float yaw = g_yaw;
 	float pitch = g_pitch;
-	// On foot only look behind (L + R): L alone is the game's look-around, R alone its lock-on.
-	const bool left = t.glances && GlanceHeld(true);
-	const bool right = t.glances && GlanceHeld(false);
-	g_glancing = kind == CamKind::Vehicle ? (left || right) : (left && right);
+	const Glance glance = t.glances ? GlanceFromPad(kind == CamKind::Vehicle) : Glance::None;
+	g_glancing = glance != Glance::None;
 	if (g_glancing) {
-		yaw = heading + (left && right ? kPi : (left ? kPi * 0.5f : -kPi * 0.5f));
+		yaw = heading + (glance == Glance::Behind ? kPi : (glance == Glance::Left ? kPi * 0.5f : -kPi * 0.5f));
 		pitch = kind == CamKind::Vehicle ? t.vehicleRestPitch : 0.0f;
 	} else if (kind == CamKind::Vehicle) {
 		if (g_wasGlancing) {

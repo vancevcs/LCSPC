@@ -36,6 +36,7 @@
 #include "Core/LCS/LCSChaseCam.h"
 #include "Core/LCS/LCSFreeAim.h"
 #include "Core/LCS/LCSFrontEnd.h"
+#include "Core/LCS/LCSGame.h"
 #include "Core/LCS/LCSInput.h"
 #include "Core/LCS/LCSMemory.h"
 #include "Core/LCS/LCSSettings.h"
@@ -66,15 +67,21 @@ const KeyMapping kKeyMappings[] = {
 	{ kFoot, NKCODE_V,                 CTRL_SELECT,                    "Change camera" },
 	{ kFoot, NKCODE_G,                 CTRL_UP,                        "Side missions on / off" },
 	{ kFoot, NKCODE_ENTER,             CTRL_START,                     "Pause menu" },
+	// Walk: no button, a smaller push of the stick (ApplyStick, kWalkDeflection). Both Alts, so the
+	// right one isn't left to PPSSPP's mapping.
+	{ kFoot, NKCODE_ALT_LEFT,          0,                              "Walk (with WASD)" },
+	{ kFoot, NKCODE_ALT_RIGHT,         0,                              "Walk (with WASD)" },
 
 	{ kCar,  NKCODE_W,                 CTRL_CROSS,                     "Accelerate" },
 	{ kCar,  NKCODE_S,                 CTRL_SQUARE,                    "Brake / reverse" },
-	{ kCar,  NKCODE_SPACE,             CTRL_SQUARE | CTRL_CROSS,       "Handbrake" },
+	// The game's configuration 2, which the input layer holds it in (kLCSPadModeOffset): R the
+	// handbrake, and every look L with the stick that way (kGlanceKeys).
+	{ kCar,  NKCODE_SPACE,             CTRL_RTRIGGER,                  "Handbrake" },
 	{ kCar,  NKCODE_EXT_MOUSEBUTTON_1, CTRL_CIRCLE,                    "Fire (a drive-by with Q or E held)" },
 	{ kCar,  NKCODE_CTRL_LEFT,         CTRL_CIRCLE,                    "Fire (a drive-by with Q or E held)" },
 	{ kCar,  NKCODE_Q,                 CTRL_LTRIGGER,                  "Look left / drive-by left" },
-	{ kCar,  NKCODE_E,                 CTRL_RTRIGGER,                  "Look right / drive-by right" },
-	{ kCar,  NKCODE_C,                 CTRL_LTRIGGER | CTRL_RTRIGGER,  "Look behind" },
+	{ kCar,  NKCODE_E,                 CTRL_LTRIGGER,                  "Look right / drive-by right" },
+	{ kCar,  NKCODE_C,                 CTRL_LTRIGGER,                  "Look behind" },
 	{ kCar,  NKCODE_H,                 CTRL_DOWN,                      "Horn" },
 	{ kCar,  NKCODE_R,                 CTRL_LEFT,                      "Previous radio station" },
 	{ kCar,  NKCODE_T,                 CTRL_RIGHT,                     "Next radio station" },
@@ -97,6 +104,8 @@ const KeyMapping kKeyMappings[] = {
 	{ kMenu, NKCODE_Q,                 CTRL_LTRIGGER,                  "Zoom out (map)" },
 	{ kMenu, NKCODE_E,                 CTRL_RTRIGGER,                  "Zoom in (map)" },
 	{ kMenu, NKCODE_F,                 CTRL_SQUARE,                    "Place / remove marker (map)" },
+	// No button: held, the mouse drags the map (LCS::DragMap).
+	{ kMenu, NKCODE_EXT_MOUSEBUTTON_1, 0,                              "Drag (map)" },
 };
 const size_t kKeyMappingCount = ARRAY_SIZE(kKeyMappings);
 
@@ -118,18 +127,26 @@ static const StickKey kStickKeys[] = {
 	{ kCar, NKCODE_DPAD_DOWN, 0.0f, -1.0f },
 };
 
-// The look keys in a vehicle also push the stick their way. The game only turns the gun out of the
-// window for a drive-by with L or R AND the stick to that side (reported: Q alone looked left, Q + A
-// aimed), so Q is Q + A and E is E + D, and fire is the only other key a drive-by needs. While one
-// of them is held it decides the stick's x on its own: Q with D held still aims left.
-struct DriveByKey {
+// The looks in a vehicle: in the game's configuration 2 each is L with the stick that way (the
+// game's own words: VELL "L button + analog stick left", VELR, VELB "L button + analog stick
+// down"), and a drive-by is a look and fire. So Q, E and C are L, and while one is held it decides
+// the stick on its own: Q with D held still looks left. With L held the stick doesn't steer
+// (measured: Q matched L alone). Q and E together are C. The first build pressed R for E, which in
+// configuration 2 is the handbrake: E steered and braked, Q + E stopped the car (reported).
+struct GlanceKey {
 	InputKeyCode key;
-	float x;
+	float x, y;
 };
-static const DriveByKey kDriveByKeys[] = {
-	{ NKCODE_Q, -1.0f },
-	{ NKCODE_E, 1.0f },
+static const GlanceKey kGlanceKeys[] = {
+	{ NKCODE_Q, -1.0f, 0.0f },
+	{ NKCODE_E, 1.0f, 0.0f },
+	{ NKCODE_C, 0.0f, -1.0f },
 };
+
+// Walk: how far the stick is pushed while Alt is held. Measured on foot: nothing to 0.2, a walk of
+// 0.044 a frame from 0.3 to 0.6, faster from 0.7, the run (0.176) at 1.0 - so the middle of the walk.
+// After the diagonal's normalisation, or W + D would be past it.
+static constexpr float kWalkDeflection = 0.45f;
 
 // One notch of the wheel is a press of one d-pad direction: weapons on foot, stations in a car.
 static constexpr int kPulseHoldTicks = 4;   // vblanks; the game samples the pad once a frame
@@ -190,6 +207,8 @@ static int g_freeAimPulse = 0;
 
 // Wheel notches made in the scope, for its zoom at the next frame boundary (LCS::ScopeLook).
 static int g_scopeZoomNotches = 0;
+// The left button is held on the game's map page: the mouse drags it (LCS::DragMap).
+static bool g_mapDragging = false;
 
 const char *InputContextName(InputContext context) {
 	switch (context) {
@@ -266,6 +285,17 @@ bool HandleHostKey(const KeyInput &key) {
 	const InputContext context = g_context.load(std::memory_order_relaxed);
 
 	std::lock_guard<std::mutex> guard(g_mutex);
+	// The intro: any key but Escape (PPSSPP's pause) and the F keys skips it, Shift included, as in
+	// the VCS fork. Kept from everything else, and its release with it.
+	if (down && IntroPlaying() && key.keyCode != NKCODE_ESCAPE && key.keyCode != NKCODE_BACK &&
+			!(key.keyCode >= NKCODE_F1 && key.keyCode <= NKCODE_F12) &&
+			key.keyCode != NKCODE_EXT_MOUSEWHEEL_UP && key.keyCode != NKCODE_EXT_MOUSEWHEEL_DOWN) {
+		if (!g_held.count(key.keyCode)) {
+			g_held[key.keyCode] = HeldKey{ InputContext::Unknown, true, true, NKCODE_UNKNOWN };
+			RequestIntroSkip();
+		}
+		return true;
+	}
 	if (key.keyCode == NKCODE_EXT_MOUSEWHEEL_UP || key.keyCode == NKCODE_EXT_MOUSEWHEEL_DOWN) {
 		if (context != kFoot && context != kCar && context != kMenu) {
 			return false;
@@ -383,6 +413,10 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 		g_freeAimPulse--;
 	}
 
+	// On STATS and BRIEF the wheel scrolls (they move only while a direction is held).
+	if (context == kMenu && !bridge && wheel != 0 && ScrollGamePage(wheel)) {
+		wheel = 0;
+	}
 	// In the scope the wheel zooms, at the frame boundary, and changes no weapon.
 	if (!bridge && MouseAimsScope(context)) {
 		g_scopeZoomNotches += wheel;
@@ -431,7 +465,10 @@ static void ApplyStick(InputContext context, const std::vector<std::pair<InputKe
 	// aim, as on the PSP. The scope the same: D held a second turned it 0.8 rad.
 	const bool freeAim = context == kFoot && ((Settings().freeAim && FreeAimActive()) || MouseAimsScope(context));
 	const bool bridge = FrontEndDriving();
-	float driveByX = 0.0f;
+	float glanceX = 0.0f;
+	float glanceY = 0.0f;
+	int glances = 0;
+	bool walk = false;
 	for (const auto &[key, h] : held) {
 		if (freeAim || bridge) {
 			break;
@@ -446,16 +483,25 @@ static void ApplyStick(InputContext context, const std::vector<std::pair<InputKe
 			}
 		}
 		if (context == kCar) {
-			for (const DriveByKey &look : kDriveByKeys) {
+			for (const GlanceKey &look : kGlanceKeys) {
 				if (look.key == h.as) {
-					driveByX += look.x;
+					glanceX += look.x;
+					glanceY += look.y;
+					glances++;
 				}
 			}
 		}
+		if (context == kFoot && (h.as == NKCODE_ALT_LEFT || h.as == NKCODE_ALT_RIGHT)) {
+			walk = true;
+		}
 	}
-	// Both held (or neither) is no side at all: C is look behind, and Q + E is the same thing.
-	if (driveByX != 0.0f) {
-		x = driveByX;
+	if (glances > 0) {
+		// Left and right together is behind, like C.
+		if (glanceX == 0.0f && glanceY == 0.0f) {
+			glanceY = -1.0f;
+		}
+		x = glanceX;
+		y = glanceY;
 	}
 	if (x != 0.0f || y != 0.0f) {
 		// A diagonal is the same speed as a straight line, as on the nub.
@@ -463,6 +509,10 @@ static void ApplyStick(InputContext context, const std::vector<std::pair<InputKe
 		if (length > 1.0f) {
 			x /= length;
 			y /= length;
+		}
+		if (walk) {
+			x *= kWalkDeflection;
+			y *= kWalkDeflection;
 		}
 		__CtrlSetAnalogXY(CTRL_STICK_LEFT, x, y);
 		g_stickHeld = true;
@@ -552,8 +602,6 @@ void InputTick(const LCSState &state) {
 	g_context.store(context, std::memory_order_relaxed);
 	// In a vehicle only the chase camera can be turned: the game's own swings back (chase-camera.md).
 	const bool mouseCamera = context == kFoot || (context == kCar && ChaseCamTakesLook(kCar));
-	g_mouseDriving.store(settings.keyboardMouse && settings.mouseLook && mouseCamera,
-		std::memory_order_relaxed);
 
 	std::vector<std::pair<InputKeyCode, HeldKey>> held;
 	int wheel;
@@ -563,9 +611,23 @@ void InputTick(const LCSState &state) {
 		wheel = g_wheelUp - g_wheelDown;
 		g_wheelUp = 0;
 		g_wheelDown = 0;
+	}
+	// The map page takes the mouse while the drag button is held.
+	g_mapDragging = false;
+	if (context == kMenu && MapPageUp()) {
+		for (const auto &[key, h] : held) {
+			if (h.as == NKCODE_EXT_MOUSEBUTTON_1 && KeyLive(h, context)) {
+				g_mapDragging = true;
+			}
+		}
+	}
+	g_mouseDriving.store(settings.keyboardMouse && ((settings.mouseLook && mouseCamera) || g_mapDragging),
+		std::memory_order_relaxed);
+	{
+		std::lock_guard<std::mutex> guard(g_mutex);
 		// Mouse movement that arrived while it couldn't turn anything is dropped, not saved up
 		// for the next time it can.
-		if (!mouseCamera) {
+		if (!mouseCamera && !g_mapDragging) {
 			g_mouseDX = 0.0f;
 			g_mouseDY = 0.0f;
 		}
@@ -589,6 +651,12 @@ void InputFrameBoundary() {
 		g_mouseDY = 0.0f;
 	}
 	const InputContext context = g_context.load(std::memory_order_relaxed);
+	if (context == kMenu) {
+		if (g_mapDragging && (dx != 0.0f || dy != 0.0f)) {
+			DragMap(dx, dy);
+		}
+		return;
+	}
 	// Free aim first: it is on foot, in mode 11, which no other look path takes.
 	const LCSSettings &s = Settings();
 	if (context == kFoot && s.freeAim && s.keyboardMouse && s.mouseLook && FreeAimLook(dx, dy)) {
@@ -642,10 +710,15 @@ void ResetInput() {
 	g_aimKeyWas = false;
 	g_freeAimPulse = 0;
 	g_scopeZoomNotches = 0;
+	g_mapDragging = false;
 }
 
 InputContext CurrentInputContext() {
 	return g_context.load(std::memory_order_relaxed);
+}
+
+bool KeyboardLayerOn() {
+	return IsActive() && Settings().keyboardMouse;
 }
 
 u32 AppliedButtons() {

@@ -10,18 +10,32 @@
 ## The game's own layout
 
 Read before any code, from the help text: `ENGLISH.GXT`'s `C0*` entries are the control tokens the
-tutorial lines use (`~k~ ~PDSPR~`), one set per control configuration (C0-C3). Configuration 1
-(`C0`), the default:
+tutorial lines use (`~k~ ~PDSPR~`), one set per control configuration (C0-C3, `CPad::Mode` at
+`Pads[0]+0x82`). **The default is `C2`**: RESET GAME SETTINGS sets 2 (`0x08ade44c`), a save carries
+its own (`0x088b221c`), and the fixtures and the saves on hand all read 2. An earlier version of this file
+called `C0` the default and the car keys were built on it, which is why E steered and braked
+(below). `C2` is `C0` on foot and differs only in a vehicle:
+
+| in a vehicle | `C0` | `C2` |
+|---|---|---|
+| handbrake (`VEHB`, GetHandBrake `0x08a97e3c`) | Square + Cross | R |
+| look left (`VELL`, `0x08a976cc`) | L | L + stick left |
+| look right (`VELR`, `0x08a978a0`) | R | L + stick right |
+| look behind (`VELB`, `0x08a97a78`) | L + R | L + stick down |
+
+`C1` and `C3` are `C0` and `C2` with the stick and the d-pad swapped (radio, horn, weapons, steering
+on the d-pad). The keyboard holds the game in `C2` while KeyboardMouse is on (LCSFrontEnd's
+`GamePrefsTick`). The rest, common to all four:
 
 | on foot | | in a vehicle | |
 |---|---|---|---|
 | sprint | Cross (`PDSPR`) | accelerate | Cross (`VEACC`) |
 | jump | Square (code: `0x08a98308`) | brake / reverse | Square (`VEBRK`) |
-| enter / hang up | Triangle (`VEEE`) | handbrake | Square + Cross (`VEHB`) |
+| enter / hang up | Triangle (`VEEE`) | handbrake | R (`VEHB`, `C2`) |
 | lock on | R (`PDLT`) | horn | D-Down (`VEHN`) |
 | fire | Circle (`PDFW`) | radio | D-Left / D-Right (`VECRS`) |
-| change weapon | D-Left / D-Right (`PDCWE`) | look left / right / behind | L / R / L + R (`VELL`, `VELR`, `VELB`) |
-| change target | D-Left / D-Right while locked on (`PDCTL`) | drive-by | hold L or R, fire with Circle (`HELP19A`) |
+| change weapon | D-Left / D-Right (`PDCWE`) | look left / right / behind | L + stick left / right / down (`C2`) |
+| change target | D-Left / D-Right while locked on (`PDCTL`) | drive-by | a look left or right, fire with Circle (`HELP19A`) |
 | free aim | tap D-Down while locked on (`FREE1`) | bike weight, water cannon | stick up / down (`VEWEI`, `VEWEU`) |
 | look around | hold L, use the stick (`PDLO1`) | | |
 | look behind | L + R (`PDBAK`) | | |
@@ -41,18 +55,19 @@ in both games. Debug -> LCS -> Input lists it.
 | key | on foot | in a vehicle | in the pause menu |
 |---|---|---|---|
 | W A S D | move (the stick) | W accelerate, S brake / reverse, A D steer | move |
+| Alt + W A S D | walk (the stick pushed 0.45) | | |
 | Up / Down arrows | (PPSSPP's d-pad) | lean a bike, aim a water cannon | (PPSSPP's d-pad) |
-| Left mouse, Left Ctrl | fire | fire | |
+| Left mouse, Left Ctrl | fire | fire | map: drag (left mouse) |
 | Right mouse | aim: with a gun, straight into free aim, aimed by the mouse; with a sniper rifle or rocket launcher, the scope | | |
 | Middle mouse | lock on (the game's R, no free aim) | | |
-| Space | jump; in the sniper's scope, zoom in (the game's Square) | handbrake | select |
+| Space | jump; in the sniper's scope, zoom in (the game's Square) | handbrake (R) | select |
 | Left Shift | sprint; in the sniper's scope, zoom out (Cross) | (claimed, does nothing: PPSSPP's rapid fire) | |
 | F | enter vehicle / hang up | exit / hang up | map: place / remove the marker |
 | Q / E | previous / next weapon (target when locked on) | look left / right, and the drive-by to that side | map: zoom out / in |
-| mouse wheel | next / previous weapon; in the sniper's scope, zoom | next / previous station | map: zoom |
+| mouse wheel | next / previous weapon; in the sniper's scope, zoom | next / previous station | map: zoom; STATS, BRIEF: scroll |
 | R / T | | previous / next station | |
 | H | | horn | |
-| C | look behind | look behind | |
+| C | look behind | look behind (L + stick down; Q + E too) | |
 | X | free aim (tap while locked on) | | |
 | Tab | answer phone, swap for a pickup | answer phone | |
 | V | camera mode | camera mode | |
@@ -60,7 +75,16 @@ in both games. Debug -> LCS -> Input lists it.
 | Enter | pause menu | pause menu | select |
 | Backspace | | | back (on a page this fork opened: back to this fork's menu) |
 
-Escape, F-keys and everything not in the table stay PPSSPP's.
+Escape, F-keys and everything not in the table stay PPSSPP's. During the intro (the logos and the
+credits) every other key skips it (front-end.md "Boot").
+
+Alt walks because a key is all or nothing and the game reads a walk from how far the stick is
+pushed. Measured on the park fixture, by deflection: nothing to 0.2, 0.044 a frame from 0.3 to 0.6,
+faster from 0.7, the run (0.176) at 1.0. Alt pushes 0.45 after the diagonal's normalisation:
+Alt + W walked 0.0440, Alt + W + D 0.0434, right Alt + S 0.0440, W alone ran 0.1768. Windows' own
+use of Alt (focusing the menu bar on its release) is turned off while the layer has the keyboard:
+`SC_KEYMENU` in `Windows/MainWindow.cpp`, which upstream only does when PPSSPP maps an Alt. Checked by
+posting that command to the window: the thread didn't enter menu mode.
 
 ## How it works
 
@@ -96,17 +120,25 @@ so none of it changed. Three rules, the VCS fork's:
 (NKCODE numbers, `OnFoot.62 = 39` is Jump on K). A key held across a context change keeps the meaning
 it had when it went down. The game's tutorial lines name PSP buttons either way ("Not done").
 
-## The drive-by on Q and E
+## The looks and the drive-by on Q, E and C
 
-The game turns the gun out of the window only with L or R held **and** the stick pushed to that
-side (reported: Q alone looked left, Q + A aimed). So in a vehicle Q also pushes the stick fully
-left and E fully right (`kDriveByKeys`), and fire is the only other key a drive-by needs. While one
-of them is held it decides the stick's x on its own (Q with D held still aims left); both together
-is no side. Measured on the car fixture with the SMG chosen on foot: Q held put L at 255 and the
-stick at -128 in `NewState`, and Q + left mouse fired out of the driver's window (ammo 150 -> 136).
-E puts R and +126 there, but the game didn't fire to the right in that fixture, where Vincenzo sits
-in the passenger seat; not tried with that seat empty. The car steers with the stick as it did with
-Q + A.
+In the game's `C2` every look in a vehicle is L with the stick that way, and a drive-by is a look
+left or right and fire. So Q, E and C all press L, and while one is held it decides the stick on its
+own (`kGlanceKeys`): Q fully left, E fully right, C fully down; Q + E is C. With L held the stick
+doesn't steer.
+
+The first build pressed R for E and L + R for C, which is `C0`. In `C2` R is the handbrake, so E
+steered right (the stick) and braked, and C and Q + E stopped the car (reported, and measured:
+W + E turned the car 2.95 rad against W alone, W + C took it to a standstill), while Space, Square +
+Cross, was throttle and brake together and no handbrake at all.
+
+Measured on the car fixture, held 1.6 s after 2 s of W, against W alone (4.49 units/s at the end,
+the car turning -0.93 rad on the hill): Space ended at 0.66; E turned the car -0.96 and the camera
+-1.56 rad from it (right); Q -0.96 and +1.58 (left); C and Q + E +3.11 (behind), the car still at
+7.1. Drive-bys with the SMG selected (slot 5, written over the debugger: the fixture's mission keeps
+Toni in the car): Q + left mouse fired 17 rounds out of the left window and E + left mouse 17 out of
+the right, which the first build never managed; C + fire and fire alone shot nothing, the game's
+own rule.
 
 ## The game's own menu
 
@@ -204,6 +236,6 @@ Three traps:
   are done (free-aim.md "The scope").
 - Gamepads: the layer only claims keyboard and mouse; a pad goes to PPSSPP's mapper with the PSP
   layout.
-- A walk modifier, direct weapon selection by number.
+- Direct weapon selection by number.
 - The help text still names PSP buttons; VCS rewrote its GXT tokens to key names
   (`Tools/vcsgxtkeys.py` in the VCS fork). The token table above is where that starts.
