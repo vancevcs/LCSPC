@@ -508,6 +508,24 @@ inline constexpr u32 kLCSGlobalSafehouseX = 537;  // the safe house the load pat
 inline constexpr u32 kLCSGlobalOnMission = 560;   // 1 for the length of the save
 inline constexpr u32 kLCSGlobalArmedWeapon = 158; // the load path (INITSAV, 0x48838) gives these back
 inline constexpr u32 kLCSGlobalArmour = 160;
+// The safe house a save was made in: 1 Portland, 2 Staunton, 3 Shoreside, -1 none. Every load
+// (MAIN.SCM 0x47b6f) creates the player at $537..$539 and calls INTERIO's enter (0x2c07f) with it,
+// which hides the radar and, for a safe house, brings its interior in; walking out of that shows
+// the radar again. INTERIO sets it before its save (0x2c721) and puts -1 back at the exit. A save
+// with -1 loaded with the radar hidden for good and INTERIO "inside" nothing (reported, 2026-10-11).
+inline constexpr u32 kLCSGlobalSaveHouse = 211;
+// $513 + i: safe house i + 1 is the player's (story progress, 0x13c73). INTERIO runs a house's
+// inside and its exit only while it is.
+inline constexpr u32 kLCSGlobalHouseOwned = 513;
+inline constexpr int kLCSSafeHouseCount = 3;
+// Each safe house's save spot, which INTERIO writes into $537..$539 before its save (0x2c727,
+// 0x2c96c, 0x2cc14), as the script's own float bits: (1138.8, -242.4, 22.0), (272.1, -417.6, 60.1),
+// (-845.3, 304.4, 41.0).
+inline constexpr u32 kLCSSafeHouseSpots[kLCSSafeHouseCount][3] = {
+	{ 0x448E59B4, 0xC37267C8, 0x41B010CB },
+	{ 0x4388130F, 0xC3D0CD50, 0x4270896C },
+	{ 0xC453528F, 0x4398347B, 0x4223CCCD },
+};
 // The ammo the routine stores per weapon type, and where: give_player weapon N ammo $global.
 struct LCSSavedWeapon {
 	u8 type;

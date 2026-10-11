@@ -178,6 +178,7 @@ void OnFrameBoundary(u32 returnAddress) {
 	if (!g_active || !g_baseChecked || returnAddress != kLCSFrameBoundaryReturn) {
 		return;
 	}
+	FrontEndFrameBoundary();
 	InputFrameBoundary();
 }
 

@@ -68,6 +68,12 @@ and `[unimplemented]` where the case is the switch's default (317).
 
 - `CollectParameters` `0x08961bec` (this, &ip, count, `ScriptParams`); `StoreParameters`
   `0x08957eb8`. `ScriptParams` is `0x08dcf550`.
+- Decoding MAIN.SCM: a jump or call target is the file offset - 8 (this file and the docs quote file
+  offsets); a mission's negative targets count from its `script_name` (`03A9`). `05AE` / `05AF` are
+  LCS's calls with arguments, not in `LCSSCM.INI`'s shape: three raw bytes (arguments, results, the
+  callee's locals base), the typed target, then the arguments typed (`0x2c6be`: call `0x2c07f` with
+  1). `0126` `is_player_in_zone` takes its zone as an 8-byte name. With those two a linear
+  disassembly of INTERIO, VIC1 and the load path stays in step.
 - `LCSSCM.INI`'s numbering is LCS's own and matches the code at the sites read so far: `0001`
   `wait` (collects 1, adds `CTimer::m_snTimeInMilliseconds`, stores the wake time at
   `script+0x210`), `022A` `get_player_health`, `022B` `get_char_health`, `02D3`
@@ -418,6 +424,33 @@ into `$124..$156`, `$158` armed weapon, `$160` armour, `$161` money, pickups `$2
 The boot check (`0x6933`) runs the intro unless `$6` is 1; the load path (`0x48838`) gives the
 weapons back from `$124..$156`. Live: a save made with these set loaded in the safe house with `$6`
 1.
+
+The safe houses (INTERIO, `0x2c225`): `$211` the house a save was made in (1 Portland, 2 Staunton,
+3 Shoreside, -1 none), set before INTERIO's save (`0x2c721`, `0x2c966`, `0x2cc0e`) and back to -1 at
+the exit (`0x2cd99`) or a new game (`0x6ec4`); `$1116` 1 while the player is inside one; `$1131..
+$1133` each house's interior swapped in (`0xd7c4`: `swap_building`, then `set_area_visible 1`);
+`$513..$515` the house is the player's (story progress, `0x13c73`; VIC1's pass sets `$513`). Their
+save spots, written into `$537..$539` before the save: (1138.8, -242.4, 22.0), (272.1, -417.6,
+60.1), (-845.3, 304.4, 41.0). **Every load** runs `0x47b6f`: `create_player` at `$537..$539`,
+heading `$162` (180 since a new game), and with `$6` 1 a call of INTERIO's enter (`0x2c07f`) with
+`$211` and `$1116` = 1. The enter is `display_radar 0` (`0x2c082`) and, for a house, its interior,
+lighting and pickups; a house's exit (`0x2cdf4`) is `display_radar 1`. Only the main script's
+new-game branch (`$6` 0, `0x6e53`) resets these, so a load keeps the saved ones. Live: a save with
+`$211` -1 loaded with the radar hidden, `$1116` 1 and no interior; with 1, inside the Saint Mark's
+house, and its exit marker put the radar back (front-end.md "The auto-save").
+
+### The radar and the area - static, written live
+
+- `display_radar` (`0586`, `0x08a318a8`) writes both **`0x08b5e56c`** (the script's) and
+  **`0x08b5e56d`** (the HUD's): 1 hides. The HUD (`0x0898c20c`) skips the radar while `0x08b5e56d`
+  is set or the radar setting is off (`0x08ada6c0`), nothing else; the camera's scope modes (7, 8,
+  34, 46) set `0x08b5e56d` alone (`0x088ee304`) and its restore clears it unless `0x08b5e56c` is set
+  (`0x088ee370`). Neither is saved; two inits clear both (`0x08986834`, `0x08988818`). `0x089632c8`, by its
+  shape a Lua binding (the multiplayer modes), reads and writes `0x08b5e56d` too.
+- **`0x08b58df0`** (s32) the area, `CGame::currArea`: `set_area_visible` (`04C0`, `0x089923f4`)
+  stores it; 1 inside a safe house. It **is** saved: the save header's `+0x0c` (`0x088b0a3c`), back
+  at a load (`0x088b20bc`).
+- The Ammu-Nations (INDAMMU, COMAMMU, PHIAMMU), VIC1 (`0x4ac4a`) and SALS2 use `display_radar` too.
 
 ### The game's own settings - static, written live
 

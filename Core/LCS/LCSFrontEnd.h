@@ -119,6 +119,8 @@ void FrontEndTick();
 // The PSP buttons the bridge holds this tick; the player's own stand down while FrontEndDriving.
 u32 FrontEndButtonMask();
 bool FrontEndDriving();
+// From LCS::OnFrameBoundary, between frames: what a save needs written while no script runs.
+void FrontEndFrameBoundary();
 // Abandons everything and puts the game's code back. Init, shutdown.
 void FrontEndReset();
 // One phrase for Debug -> LCS.

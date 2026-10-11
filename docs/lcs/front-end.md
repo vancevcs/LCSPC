@@ -150,17 +150,39 @@ mission running (`$560` 0), not in a cutscene (camera mode 17), alive, no menu -
 03DD, sets) opens the game's save list; it doesn't prepare a save. The safe house's routine (MAIN.SCM
 `0x176d5`) does that first, and the script's boot check starts the intro unless `$6` is 1 (`0x6933`):
 VCS's `$4` trap again. So the bridge does what the routine does: `$560` = 1 for the save (and back
-after), `$6` = 1, `$7..$9` = `$537..$539` (the safe house the load path puts you in), every weapon
+after), `$6` = 1, `$537..$539` and `$7..$9` the safe house's save spot (below), every weapon
 type's ammo into `$124..$156` (`kLCSSavedWeapons`, the routine's own table: the load path,
 `INITSAV`, clears the weapons and gives these back), the armed weapon into `$158`, armour into
-`$160`. Loading such a save puts you at your last safe house with your weapons, as a safe-house save
-does. Script globals are `[0x08b38d7c] + N*4` (LCS's operand bytes `0xcc`.. are globals; VCS's start
-at `0xcd`).
+`$160`. Script globals are `[0x08b38d7c] + N*4` (LCS's operand bytes `0xcc`.. are globals; VCS's
+start at `0xcd`).
+
+**The safe house it is made in.** Every load runs the same script (MAIN.SCM `0x47b6f`): it creates
+the player at `$537..$539` and calls INTERIO's enter (`0x2c07f`) with `$211`, the safe house the save
+was made in. The enter hides the radar and, for a house (1 Portland, 2 Staunton, 3 Shoreside), swaps
+its interior in and sets area 1; INTERIO then runs that house's inside, and its exit swaps the
+interior out, shows the radar and puts `$211` back to -1. INTERIO sets `$211` and `$537..$539` just
+before it calls the save routine (`0x2c721`). The first auto-save set neither: `$211` stayed -1, so
+the load hid the radar with no interior to walk out of, and the radar never came back (reported:
+"it thinks I am in an interior"). Read live from that save: area 0, both radar bytes 1, `$211` -1,
+`$1116` 1, Toni on the harbour pier where a new game starts, which `$537..$539` still held because
+that game had never saved in a safe house. (The first build's "loaded in the Saint Mark's safe
+house" was a game that had.)
+
+So the auto-save saves "in" the safe house the player owns (`$513..$515`) nearest to where they
+are, at its save spot (`kLCSSafeHouseSpots`, INTERIO's own values). `$211` can't be written with the
+rest: INTERIO runs a house's way in for a player in its zone whenever `$211` names it, and the
+bridge's tick can land mid-frame, before that frame's scripts. So it goes in at
+the first frame boundary with the game's menu up, when the scripts are held, and back at "save
+completed", the menu still up. Measured, outside the Saint Mark's door (INTERIO's zone): `$211` 1
+from 60 ms after the request to the restore, which logged the menu up; `$1116`, the radar bytes, the
+area and the interior flag never moved during two auto-saves. Booting into that save: Toni at the
+Saint Mark's save spot, interior in, area 1, radar hidden, as after the safe house's own save; on
+the exit marker, outside the door with area 0 and the radar drawn again.
 
 Then the dialog: the list steered to the last entry, the overwrite prompt moved to YES (it opens on
 NO), "save completed" answered with Back (it takes nothing else), and the game's menu closed if it
 is still up. Measured with a simulated mission pass: `S7` written 5 s later (150 frames), and
-loading it back came up in the Saint Mark's safe house with `$6` 1 and `$560` 0.
+loading it back came up with `$6` 1 and `$560` 0.
 
 **A save the game names after its last mission** shows here by that name; one with none (only a
 test's fake key) shows as SAVED GAME.

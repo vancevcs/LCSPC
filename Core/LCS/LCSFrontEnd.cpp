@@ -180,6 +180,11 @@ bool g_quiet = false;
 bool g_savePrepared = false;
 u32 g_saveSpace = 0;
 u32 g_savedOnMission = 0;
+// The safe house the save is made "in" (1..3, 0 none owned), and $211 as it was.
+int g_saveHouse = 0;
+bool g_saveHousePending = false;
+bool g_saveHouseWritten = false;
+u32 g_savedHouseGlobal = 0;
 
 struct FeState {
 	bool valid = false;
@@ -385,6 +390,14 @@ void IntroTick(const LCSState &state) {
 // into the opening mission: the script's boot check starts the intro unless $6 is 1 (0x6933). So
 // this does what the routine does - $6, the restart position, the weapons and armour the load path
 // gives back - and $560 for the length of it, put back afterwards as the routine does.
+//
+// And the safe house it is made in, as INTERIO does before it calls the routine: the load path
+// creates the player at $537..$539 and runs INTERIO's enter with $211, which hides the radar and
+// brings that house's interior in, the exit of which shows the radar again. With no house the radar
+// stayed hidden (reported). The owned house nearest the player is the one. $211 can't go in with the
+// rest: INTERIO walks a player in its house's zone in whenever it is set, so it is written only while
+// the game's menu is up and its scripts don't run (SaveHouseFrameBoundary), and put back as soon
+// as the save is written.
 
 u32 ScriptSpace() {
 	return ReadU32(kLCSScriptSpacePtr).value_or(0);
@@ -396,6 +409,33 @@ bool WriteGlobal(u32 space, u32 index, u32 value) {
 
 std::optional<u32> ReadGlobal(u32 space, u32 index) {
 	return space != 0 ? ReadU32(space + index * 4) : std::nullopt;
+}
+
+float FloatFromBits(u32 bits) {
+	float f;
+	memcpy(&f, &bits, sizeof(f));
+	return f;
+}
+
+// 1..3, or 0 when the player owns none yet (before the first mission is passed).
+int NearestOwnedSafeHouse(u32 space, u32 ped) {
+	const float x = ReadFloat(ped + kLCSEntityPositionOffset).value_or(0.0f);
+	const float y = ReadFloat(ped + kLCSEntityPositionOffset + 4).value_or(0.0f);
+	int best = 0;
+	float bestDistance = 0.0f;
+	for (int i = 0; i < kLCSSafeHouseCount; i++) {
+		if (ReadGlobal(space, kLCSGlobalHouseOwned + i).value_or(0) != 1) {
+			continue;
+		}
+		const float dx = FloatFromBits(kLCSSafeHouseSpots[i][0]) - x;
+		const float dy = FloatFromBits(kLCSSafeHouseSpots[i][1]) - y;
+		const float distance = dx * dx + dy * dy;
+		if (best == 0 || distance < bestDistance) {
+			best = i + 1;
+			bestDistance = distance;
+		}
+	}
+	return best;
 }
 
 bool PrepareScriptForSave(const LCSState &state) {
@@ -414,12 +454,18 @@ bool PrepareScriptForSave(const LCSState &state) {
 
 	WriteGlobal(space, kLCSGlobalOnMission, 1);
 	WriteGlobal(space, kLCSGlobalFromSave, 1);
+	g_saveHouse = NearestOwnedSafeHouse(space, ped);
+	g_saveHousePending = g_saveHouse != 0;
+	g_saveHouseWritten = false;
 	for (u32 i = 0; i < 3; i++) {
-		const std::optional<u32> pos = ReadGlobal(space, kLCSGlobalSafehouseX + i);
+		const std::optional<u32> pos = g_saveHouse != 0 ? std::optional<u32>(kLCSSafeHouseSpots[g_saveHouse - 1][i])
+			: ReadGlobal(space, kLCSGlobalSafehouseX + i);
 		if (pos) {
+			WriteGlobal(space, kLCSGlobalSafehouseX + i, *pos);
 			WriteGlobal(space, kLCSGlobalRestartX + i, *pos);
 		}
 	}
+	NOTICE_LOG(Log::System, "LCS front end: saving in safe house %d", g_saveHouse);
 	// get_ammo_in_player_weapon for every type the routine stores: the slot holding that type's
 	// total, or 0.
 	for (const LCSSavedWeapon &weapon : kLCSSavedWeapons) {
@@ -450,7 +496,31 @@ void RestoreScriptAfterSave() {
 	// Only into the script space it was taken from: a load in between brought its own.
 	if (ScriptSpace() == g_saveSpace) {
 		WriteGlobal(g_saveSpace, kLCSGlobalOnMission, g_savedOnMission);
+		if (g_saveHouseWritten) {
+			WriteGlobal(g_saveSpace, kLCSGlobalSaveHouse, g_savedHouseGlobal);
+		}
 	}
+	NOTICE_LOG(Log::System, "LCS front end: script back after the save (game's menu %s)",
+		ReadU8(kLCSFrontEnd + kLCSFeActiveOffset).value_or(0) ? "up" : "down");
+	g_saveHousePending = false;
+	g_saveHouseWritten = false;
+}
+
+// Between frames, with the save's menu up: the frame after this one doesn't run the scripts.
+void SaveHouseFrameBoundary() {
+	if (!g_saveHousePending || !g_savePrepared || ScriptSpace() != g_saveSpace ||
+			ReadU8(kLCSFrontEnd + kLCSFeActiveOffset).value_or(0) == 0) {
+		return;
+	}
+	const std::optional<u32> house = ReadGlobal(g_saveSpace, kLCSGlobalSaveHouse);
+	if (!house) {
+		return;
+	}
+	g_saveHousePending = false;
+	g_saveHouseWritten = true;
+	g_savedHouseGlobal = *house;
+	WriteGlobal(g_saveSpace, kLCSGlobalSaveHouse, (u32)g_saveHouse);
+	NOTICE_LOG(Log::System, "LCS front end: $211 = %d for the save (was %d)", g_saveHouse, (s32)*house);
 }
 
 // --- Ending a sequence ---
@@ -811,6 +881,8 @@ void DialogTick(const FeState &fe) {
 		return;
 	}
 	if (peek.done) {
+		// Written: the script goes back to how it was while the menu still holds the scripts.
+		RestoreScriptAfterSave();
 		// "Save completed" takes Back and nothing else.
 		Press(back);
 	}
@@ -1236,6 +1308,10 @@ u32 FrontEndButtonMask() {
 	return g_mask | g_introMask;
 }
 
+void FrontEndFrameBoundary() {
+	SaveHouseFrameBoundary();
+}
+
 bool IntroPlaying() {
 	return g_introPlaying.load(std::memory_order_relaxed);
 }
@@ -1340,6 +1416,8 @@ void FrontEndReset() {
 	g_haveMission = false;
 	g_autoSaveArmed = false;
 	g_savePrepared = false;
+	g_saveHousePending = false;
+	g_saveHouseWritten = false;
 	g_introOver = false;
 	g_introMask = 0;
 	g_introSkipLeft = 0;
