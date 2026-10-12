@@ -15,6 +15,9 @@
 // Official git repository and contact information can be found at
 // https://github.com/hrydgard/ppsspp and http://www.ppsspp.org/.
 
+#include <algorithm>
+#include <cmath>
+
 #include "Core/LCS/LCSAddresses.h"
 #include "Core/LCS/LCSMemory.h"
 #include "Core/LCS/LCSState.h"
@@ -88,6 +91,70 @@ void UpdateState(LCSState *state) {
 
 void UpdateSharedState() {
 	UpdateState(&g_state);
+}
+
+SunState ReadSun() {
+	SunState sun;
+	const std::optional<u8> hours = ReadU8(kLCSClockHours);
+	const std::optional<u8> minutes = ReadU8(kLCSClockMinutes);
+	if (!hours || !minutes || *hours > 23 || *minutes > 59) {
+		return sun;
+	}
+	const float angle = 2.0f * 3.14159265f * (float)(*minutes + 60 * *hours) / (24.0f * 60.0f);
+	const float v[3] = { sinf(angle), 1.0f, 0.2f - cosf(angle) };
+	const float inv = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+	for (int c = 0; c < 3; c++) {
+		sun.dir[c] = v[c] * inv;
+	}
+	sun.valid = true;
+	for (int c = 0; c < 3; c++) {
+		const std::optional<float> k = ReadFloat(kLCSTimeCycleLight + 4 * c);
+		// Clamped, and NaN refused: a renderer multiplies by it every frame.
+		if (k && *k >= 0.0f && *k <= 4.0f) {
+			sun.colour[c] = std::min(*k, 1.0f);
+		}
+	}
+	return sun;
+}
+
+WeatherState ReadWeather() {
+	WeatherState w;
+	const std::optional<u16> oldType = ReadU16(kLCSWeatherOld);
+	const std::optional<u16> newType = ReadU16(kLCSWeatherNew);
+	const std::optional<u16> forced = ReadU16(kLCSWeatherForced);
+	if (const std::optional<float> interp = ReadFloat(kLCSWeatherInterp)) {
+		w.interp = *interp;
+	}
+	w.oldType = (s16)oldType.value_or(0);
+	w.newType = (s16)newType.value_or(0);
+	w.forcedType = (s16)forced.value_or(0xffff);
+	if (kLCSWeatherRain == 0) {
+		return w;
+	}
+	const std::optional<float> rain = ReadFloat(kLCSWeatherRain);
+	if (!rain) {
+		return w;
+	}
+	w.valid = true;
+	// Clamped: the one value a renderer multiplies by every frame, and a wrong address that reads
+	// 1e30 would be a white screen rather than a wrong number.
+	w.rain = *rain > 0.0f ? std::min(*rain, 1.0f) : 0.0f;
+	return w;
+}
+
+std::optional<float> CameraWorld(int axis) {
+	if (axis < 0 || axis > 2) {
+		return std::nullopt;
+	}
+	return ReadFloat(kLCSTheCamera + kLCSCameraPosOffset + (u32)axis * 4);
+}
+
+std::optional<float> PlayerWorld(int axis) {
+	const std::optional<u32> ped = ReadU32(LookupAddr(LCSAddr::PlayerBase).address);
+	if (axis < 0 || axis > 2 || !ped || !*ped) {
+		return std::nullopt;
+	}
+	return ReadFloat(*ped + kLCSEntityPositionOffset + (u32)axis * 4);
 }
 
 const LCSState &GetState() {

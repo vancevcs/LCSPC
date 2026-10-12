@@ -82,6 +82,8 @@
     </ClCompile>
     <ClCompile Include="..\..\GPU\Common\DepthRaster.cpp" />
     <ClCompile Include="..\..\GPU\Common\LCSSmaa.cpp" />
+    <ClCompile Include="..\..\GPU\Common\LCSShadow.cpp" />
+    <ClCompile Include="..\..\GPU\Common\LCSWater.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\GPU\Common\DepalettizeShaderCommon.h" />
@@ -167,6 +169,8 @@
     </ClInclude>
     <ClInclude Include="..\..\GPU\Common\DepthRaster.h" />
     <ClInclude Include="..\..\GPU\Common\LCSSmaa.h" />
+    <ClInclude Include="..\..\GPU\Common\LCSShadow.h" />
+    <ClInclude Include="..\..\GPU\Common\LCSWater.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Debugger">

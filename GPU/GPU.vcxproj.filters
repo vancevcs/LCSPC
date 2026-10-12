@@ -267,6 +267,12 @@
     <ClInclude Include="Common\LCSSmaa.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="Common\LCSShadow.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\LCSWater.h">
+      <Filter>Common</Filter>
+    </ClInclude>
     <ClInclude Include="GPUStateSIMDUtil.h">
       <Filter>Common</Filter>
     </ClInclude>
@@ -537,6 +543,12 @@
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="Common\LCSSmaa.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\LCSShadow.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\LCSWater.cpp">
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="Common\VertexDecoderLoongArch64.cpp">

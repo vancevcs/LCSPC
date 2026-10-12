@@ -69,6 +69,32 @@ struct LCSState {
 
 void UpdateState(LCSState *state);
 
+// The weather, for the renderer's passes (the shadows thin in the rain, the roads go wet). Read
+// fresh, emu thread. `valid` false when the rain can't be read: dry roads, not permanent rain.
+struct WeatherState {
+	bool valid = false;
+	float rain = 0.0f;      // 0..1, clamped
+	int oldType = 0;
+	int newType = 0;
+	float interp = 0.0f;
+	int forcedType = -1;    // the script's, or -1 released
+};
+WeatherState ReadWeather();
+// The sun, from the clock by GTA III's CTimeCycle formula, normalise(sin a, 1, 0.2 - cos a) with a
+// the day's angle from midnight: the game's directional light frame points along exactly its
+// negation at every hour measured. Toward the sun, Z up; below the horizon at night. LCS hands
+// the GE no time-of-day light (its lit draws use one fixed direction), so this is the only sun
+// there is. `colour` is the time cycle's light, 0..1. Emu thread.
+struct SunState {
+	bool valid = false;
+	float dir[3] = {};
+	float colour[3] = { 1.0f, 1.0f, 1.0f };
+};
+SunState ReadSun();
+// TheCamera's and the player's positions in world units, axis 0..2. Emu thread.
+std::optional<float> CameraWorld(int axis);
+std::optional<float> PlayerWorld(int axis);
+
 // The state as of the last LCS::Tick. Tick calls UpdateSharedState; everything else reads.
 void UpdateSharedState();
 const LCSState &GetState();

@@ -257,6 +257,8 @@
     <ClInclude Include="..\ext\xbrz\xbrz.h" />
     <ClInclude Include="Common\DepthRaster.h" />
     <ClInclude Include="Common\LCSSmaa.h" />
+    <ClInclude Include="Common\LCSShadow.h" />
+    <ClInclude Include="Common\LCSWater.h" />
     <ClInclude Include="Common\ImageCommon.h" />
     <ClInclude Include="Common\ReplacedTexture.h" />
     <ClInclude Include="Common\TextureReplacer.h" />
@@ -365,6 +367,8 @@
     <ClCompile Include="Common\DepthBufferCommon.cpp" />
     <ClCompile Include="Common\DepthRaster.cpp" />
     <ClCompile Include="Common\LCSSmaa.cpp" />
+    <ClCompile Include="Common\LCSShadow.cpp" />
+    <ClCompile Include="Common\LCSWater.cpp" />
     <ClCompile Include="Common\ReplacedTexture.cpp" />
     <ClCompile Include="Common\TextureReplacer.cpp" />
     <ClCompile Include="Common\TextureShaderCommon.cpp" />

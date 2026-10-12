@@ -54,6 +54,19 @@ LCSRouteTuning &RouteTuning();
 
 // Emu thread, from LCS::Tick.
 void RouteTick();
+
+// The road network itself, for the renderer's wet roads (LCSWater): a node's position in world units
+// and its links. EnsureRoadGraph makes the host copy match the game's (false while there is none, as
+// during a load); the others are false past the counts. Emu thread.
+struct RoutePoint {
+	float x = 0.0f;
+	float y = 0.0f;
+	float z = 0.0f;
+};
+bool EnsureRoadGraph();
+int RoadNodeCount();
+bool RoadNodeAt(int index, RoutePoint *out);
+bool RoadLinkAt(int node, int slot, int *otherNode);
 // Emu thread: drop the graph and the route (shutdown).
 void RouteReset();
 

@@ -58,7 +58,7 @@ static const char *const kResolutionLabels[] = {
 };
 static const char *const kAnisoLabels[] = { "Off", "2x", "4x", "8x", "16x" };
 
-// The placeholders' ladders, the VCS fork's words for the same rows.
+// The VCS fork's words for the same rows (widescreen is still a placeholder).
 static const char *const kWidescreenLabels[] = { "Off", "Crop", "Wider" };
 static const char *const kShadowLabels[] = { "LOW", "MEDIUM", "HIGH", "ULTRA" };
 static const char *const kWaterLabels[] = { "LOW", "MEDIUM", "HIGH" };
@@ -90,14 +90,18 @@ static std::string ResolutionText(const Option &opt) {
 static struct {
 	bool customTracks = false;
 	int widescreen = 0;
-	int shadows = 1;
-	bool ambientOcclusion = false;
-	int water = 1;
 } g_placeholder;
 
 // Rows standing in for one part of a PPSSPP setting: read back by RefreshOptionProxies, written
 // through by the row's onChange.
 static bool g_showFpsProxy = false;
+
+// The Ambient occlusion row is live only while there are shadows (it reads their depth).
+static bool g_shadowsOn = true;
+
+static void RefreshShadowsOn() {
+	g_shadowsOn = g_settings.shadows != kLCSShadowsOff;
+}
 
 static void ApplyShowFps() {
 	if (g_showFpsProxy) {
@@ -109,6 +113,7 @@ static void ApplyShowFps() {
 
 void RefreshOptionProxies() {
 	g_showFpsProxy = (g_Config.iShowStatusFlags & (int)ShowStatusFlags::FPS_COUNTER) != 0;
+	RefreshShadowsOn();
 }
 
 int SystemLanguageForGame() {
@@ -346,18 +351,21 @@ const std::vector<Option> &Options() {
 			}, [](const Option &opt) {
 				return std::string(*opt.boolValue ? "HIGH" : "LOW");
 			});
-		addChoice(OptionPage::GraphicsAdvanced, nullptr, "Shadow quality",
-			"Real shadows from the sun, which the PSP game has none of.",
-			&g_placeholder.shadows, kShadowLabels, ARRAY_SIZE(kShadowLabels), 1);
-		placeholder();
-		addBool(OptionPage::GraphicsAdvanced, nullptr, "Ambient occlusion",
-			"Soft darkening in corners and creases, where a wall meets the pavement.",
-			&g_placeholder.ambientOcclusion);
-		placeholder();
-		addChoice(OptionPage::GraphicsAdvanced, nullptr, "Water quality",
-			"Waves, reflections and sun glint on the river, which the PSP draws flat.",
-			&g_placeholder.water, kWaterLabels, ARRAY_SIZE(kWaterLabels), 1);
-		placeholder();
+		// The VCS fork's passes (docs/lcs/shadows-and-water.md). Everything tunable past these rows
+		// is in the debugger, as there.
+		addChoice(OptionPage::GraphicsAdvanced, "Shadows", "Shadow quality",
+			"Real shadows from the sun, which the PSP game has none of. MEDIUM shadows people and "
+			"vehicles, HIGH adds props like lamp posts, ULTRA shadows the whole city. Vulkan only.",
+			&s.shadows, kShadowLabels, ARRAY_SIZE(kShadowLabels), kLCSShadowsProps, false,
+			&RefreshShadowsOn);
+		addBool(OptionPage::GraphicsAdvanced, "AmbientOcclusion", "Ambient occlusion",
+			"Soft darkening in corners and creases, where a wall meets the pavement. Needs Shadow "
+			"quality at MEDIUM or above.", &s.ambientOcclusion);
+		enabledBy(&g_shadowsOn);
+		addChoice(OptionPage::GraphicsAdvanced, "Water", "Water quality",
+			"Waves, reflections and sun glint on the sea, which the PSP draws flat. HIGH also makes "
+			"the roads go wet while it rains. Vulkan only.",
+			&s.water, kWaterLabels, ARRAY_SIZE(kWaterLabels), kLCSWaterSeaAndRoads);
 		addBool(OptionPage::GraphicsAdvanced, "AntiAliasing", "Anti-aliasing",
 			"Smooths the jagged edges of the city without blurring the HUD. Vulkan only.",
 			&s.antiAliasing, false, false, nullptr, [](const Option &opt) {

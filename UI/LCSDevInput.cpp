@@ -31,7 +31,9 @@
 #include "Common/System/NativeApp.h"
 #include "Common/UI/ScreenManager.h"
 #include "Core/KeyMap.h"
+#include "Core/HW/Display.h"
 #include "Core/LCS/LCSInput.h"
+#include "Core/LCS/LCSSettings.h"
 #include "Core/SaveState.h"
 #include "UI/LCSDevInput.h"
 
@@ -180,6 +182,42 @@ void LCSDevKeyPipeTick() {
 					}
 				}
 			}
+			continue;
+		}
+		if (verb == "set") {
+			// An lcs.ini row by its key, live and unsaved, as the menu would set it: "set Shadows 0".
+			const size_t gap = arg.find(' ');
+			const std::string key = arg.substr(0, gap);
+			const std::string value = gap == std::string::npos ? "" : arg.substr(gap + 1);
+			bool found = false;
+			for (const LCS::Option &opt : LCS::Options()) {
+				if (!opt.iniKey || !equalsNoCase(key, opt.iniKey)) {
+					continue;
+				}
+				found = true;
+				switch (opt.type) {
+				case LCS::OptionType::Bool:
+					*opt.boolValue = value == "1" || equalsNoCase(value, "true");
+					break;
+				case LCS::OptionType::Float:
+					*opt.floatValue = (float)atof(value.c_str());
+					break;
+				case LCS::OptionType::Int:
+				case LCS::OptionType::Choice:
+					*opt.intValue = atoi(value.c_str());
+					break;
+				}
+				if (opt.onChange) {
+					opt.onChange();
+				}
+			}
+			NOTICE_LOG(Log::System, "LCS_KEY_PIPE: set %s %s%s", key.c_str(), value.c_str(), found ? "" : " - no such row");
+			continue;
+		}
+		if (verb == "fps") {
+			float vps = 0.0f, fps = 0.0f, actual = 0.0f;
+			__DisplayGetFPS(&vps, &fps, &actual);
+			NOTICE_LOG(Log::System, "LCS_KEY_PIPE: fps %.1f (vps %.1f, actual %.1f)", fps, vps, actual);
 			continue;
 		}
 		if (verb == "look") {

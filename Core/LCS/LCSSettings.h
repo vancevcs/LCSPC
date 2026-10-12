@@ -28,6 +28,18 @@
 
 namespace LCS {
 
+// The Shadow quality row (GPU/Common/LCSShadow), the VCS fork's ladder: LOW none, MEDIUM people and
+// vehicles, HIGH props such as lamp posts as well, ULTRA the whole city.
+inline constexpr int kLCSShadowsOff = 0;
+inline constexpr int kLCSShadowsEntities = 1;
+inline constexpr int kLCSShadowsProps = 2;
+inline constexpr int kLCSShadowsEverything = 3;
+// The Water quality row (GPU/Common/LCSWater): LOW the PSP's own water, MEDIUM a shaded sea, HIGH
+// roads that go wet in the rain as well.
+inline constexpr int kLCSWaterOff = 0;
+inline constexpr int kLCSWaterSea = 1;
+inline constexpr int kLCSWaterSeaAndRoads = 2;
+
 struct LCSSettings {
 	// 60 fps: the frame cap plus the millisecond carry (LCSFrameRate).
 	bool frameRate60 = false;
@@ -54,6 +66,12 @@ struct LCSSettings {
 	bool worldMemory = false;
 	// SMAA over the world, before the HUD (GPU/Common/LCSSmaa; Vulkan only).
 	bool antiAliasing = true;
+	// Sun shadows and ambient occlusion (GPU/Common/LCSShadow), and the water (GPU/Common/LCSWater);
+	// Vulkan only. The renderer follows these itself (LCSShadow's and LCSWater's FollowSettings):
+	// nothing here reaches into it.
+	int shadows = kLCSShadowsProps;
+	bool ambientOcclusion = false;
+	int water = kLCSWaterSeaAndRoads;
 	// PPSSPP's "Save new textures", turned on at every boot: each texture drawn for the first time
 	// goes to TEXTURES/ULUS10041/new, which the HD pack is bound from (Tools/lcshd.py), so every
 	// session adds to it. Off leaves PPSSPP's own checkbox in charge.

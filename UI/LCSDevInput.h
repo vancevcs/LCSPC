@@ -28,6 +28,8 @@
 //   wait N           N frames
 //   savestate PATH / loadstate PATH   a PPSSPP savestate, for test fixtures
 //   pad SEQUENCE     PSP button taps, as Debug -> LCS -> Pad plays them ("pad Up Square L+R")
+//   set KEY VALUE    an lcs.ini row by its key, live and not saved ("set Shadows 0")
+//   fps              logs the frame rate
 // KEY is a PPSSPP key name (W, Space, LShift, Enter, Backspace...), MOUSE1-MOUSE5, WHEELUP,
 // WHEELDOWN.
 

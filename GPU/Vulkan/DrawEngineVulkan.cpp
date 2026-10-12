@@ -37,7 +37,9 @@
 #include "GPU/Common/DrawEngineCommon.h"
 #include "GPU/Common/ShaderUniforms.h"
 #include "GPU/Vulkan/DrawEngineVulkan.h"
+#include "GPU/Common/LCSShadow.h"  // Fork-specific
 #include "GPU/Common/LCSSmaa.h"  // Fork-specific
+#include "GPU/Common/LCSWater.h"  // Fork-specific
 #include "GPU/Vulkan/TextureCacheVulkan.h"
 #include "GPU/Vulkan/ShaderManagerVulkan.h"
 #include "GPU/Vulkan/PipelineManagerVulkan.h"
@@ -52,6 +54,8 @@ enum {
 DrawEngineVulkan::DrawEngineVulkan(Draw::DrawContext *draw)
 	: draw_(draw) {
 	decOptions_.expand8BitNormalsToFloat = false;
+	LCSShadow::Init();  // Fork-specific
+	LCSWater::Init();  // Fork-specific
 	LCSSmaa::Init();  // Fork-specific
 }
 
@@ -95,6 +99,8 @@ void DrawEngineVulkan::InitDeviceObjects() {
 
 DrawEngineVulkan::~DrawEngineVulkan() {
 	DestroyDeviceObjects();
+	LCSShadow::Shutdown();  // Fork-specific
+	LCSWater::Shutdown();  // Fork-specific
 	LCSSmaa::Shutdown();  // Fork-specific
 }
 
@@ -131,7 +137,9 @@ void DrawEngineVulkan::DestroyDeviceObjects() {
 		vulkan->Delete().QueueDeleteSampler(nullSampler_);
 
 	renderManager->DestroyPipelineLayout(pipelineLayout_);
-	// Fork-specific: the LCS SMAA pass's pipelines and framebuffers, while the context still exists.
+	// Fork-specific: the LCS passes' pipelines and framebuffers, while the context still exists.
+	LCSShadow::DeviceLost();
+	LCSWater::DeviceLost();
 	LCSSmaa::DeviceLost();
 }
 
@@ -208,9 +216,24 @@ void DrawEngineVulkan::Flush() {
 		return;
 	}
 
-	// Fork-specific: GTA: Liberty City Stories' SMAA, over the finished world before the HUD (the
-	// first 2D flush after 3D into the game's framebuffer). It binds targets of its own, so the
-	// framebuffer manager takes the game's back. Does nothing unless the LCS layer is active.
+	// Fork-specific: GTA: Liberty City Stories' passes over the finished world before the HUD (the
+	// first 2D flush after 3D into the game's framebuffer): the sun shadows, then the water (shaded
+	// from a frame that has its shadows), then SMAA over both. Each binds targets of its own, so the
+	// framebuffer manager takes the game's back. None does anything unless the LCS layer is active.
+	if (LCSShadow::IsActive()) {
+		VirtualFramebuffer *vfb = framebufferManager_->GetCurrentRenderVFB();
+		if (LCSShadow::OnFlush(draw_, gstate.isModeThrough(), vfb ? vfb->fbo : nullptr,
+				vfb ? vfb->bufferWidth : 0, vfb ? vfb->bufferHeight : 0, textureCache_)) {
+			framebufferManager_->RebindFramebuffer("lcs_shadow_done");
+		}
+	}
+	if (LCSWater::IsActive()) {
+		VirtualFramebuffer *vfb = framebufferManager_->GetCurrentRenderVFB();
+		if (LCSWater::OnFlush(draw_, gstate.isModeThrough(), vfb ? vfb->fbo : nullptr,
+				vfb ? vfb->bufferWidth : 0, vfb ? vfb->bufferHeight : 0)) {
+			framebufferManager_->RebindFramebuffer("lcs_water_done");
+		}
+	}
 	if (LCSSmaa::IsActive()) {
 		VirtualFramebuffer *vfb = framebufferManager_->GetCurrentRenderVFB();
 		if (LCSSmaa::OnFlush(draw_, gstate.isModeThrough(), vfb ? vfb->fbo : nullptr,
@@ -266,7 +289,9 @@ void DrawEngineVulkan::Flush() {
 		uint32_t vbOffset;
 
 		VkBuffer vbuf = VK_NULL_HANDLE;
-		if (lastVType_ & GE_VTYPE_WEIGHT_MASK) {
+		// Fork-specific: the LCS capture reads the positions back, and the push buffer is write-combined
+		// (slow to read), so with shadows or water on every draw takes the skinning path's predecode.
+		if ((lastVType_ & GE_VTYPE_WEIGHT_MASK) || LCSShadow::IsActive() || LCSWater::IsActive()) {
 			// If skinning, we're predecoding into "decoded". So make sure we're done, then push that content.
 			DecodeVerts(dec_, decoded_);
 			VkDeviceSize size = numDecodedVerts_ * dec_->GetDecVtxFmt().stride;
@@ -293,6 +318,23 @@ void DrawEngineVulkan::Flush() {
 			gstate_c.vertexFullAlpha = gstate_c.vertexFullAlpha && ((hasColor && (gstate.materialupdate & 1)) || gstate.getMaterialAmbientA() == 255) && (!gstate.isLightingEnabled() || gstate.getAmbientA() == 255);
 		}
 
+		// Fork-specific: GTA: Liberty City Stories' shadow and water passes see the draw here, once
+		// vertexFullAlpha is settled and the indices decoded (docs/lcs/shadows-and-water.md).
+		if (LCSWater::IsActive()) {
+			const DecVtxFormat &fmt = dec_->GetDecVtxFmt();
+			LCSWater::NoteDraw(prim, dec_->VertexType(), vertexCount, decoded_, numDecodedVerts_,
+				useElements ? decIndex_ : nullptr, vertexCount, fmt.stride, fmt.posoff, gstate.worldMatrix);
+		}
+		if (LCSShadow::IsActive()) {
+			const DecVtxFormat &fmt = dec_->GetDecVtxFmt();
+			if (LCSShadow::CaptureDraw(prim, dec_->VertexType(), vertexCount, decoded_, numDecodedVerts_,
+					useElements ? decIndex_ : nullptr, fmt.stride, fmt.posoff, fmt.uvfmt, fmt.uvoff,
+					gstate.worldMatrix, gstate.getTextureAddress(0))) {
+				ResetAfterDrawInline();
+				return;
+			}
+		}
+
 		bool textureNeedsApply = false;
 		if (gstate_c.IsDirty(DIRTY_TEXTURE_IMAGE | DIRTY_TEXTURE_PARAMS) && !gstate.isModeClear() && gstate.isTextureMapEnabled()) {
 			gstate_c.Clean(DIRTY_TEXTURE_IMAGE | DIRTY_TEXTURE_PARAMS);
@@ -306,6 +348,9 @@ void DrawEngineVulkan::Flush() {
 		} else if (gstate.getTextureAddress(0) == (gstate.getFrameBufRawAddress() | 0x04000000)) {
 			// This catches the case of clearing a texture.
 			gstate_c.Dirty(DIRTY_TEXTURE_IMAGE);
+		}
+		if (LCSShadow::IsActive()) {
+			LCSShadow::NoteCutoutTexture((void *)imageView);  // Fork-specific
 		}
 
 		if (!lastPipeline_ || gstate_c.IsDirty(DIRTY_BLEND_STATE | DIRTY_VIEWPORTSCISSOR_STATE | DIRTY_RASTER_STATE | DIRTY_DEPTHSTENCIL_STATE | DIRTY_VERTEXSHADER_STATE | DIRTY_FRAGMENTSHADER_STATE) || prim != lastPrim_) {
@@ -410,6 +455,21 @@ void DrawEngineVulkan::Flush() {
 		if (useDepthRaster_) {
 			DepthRasterPredecoded(prim, decoded_, numDecodedVerts_, dec_, vertexCount);
 		}
+		// Fork-specific: the LCS shadow and water capture, as on the hardware-transform path.
+		if (LCSWater::IsActive()) {
+			const DecVtxFormat &fmt = dec_->GetDecVtxFmt();
+			LCSWater::NoteDraw(prim, dec_->VertexType(), vertexCount, decoded_, numDecodedVerts_,
+				decIndex_, vertexCount, fmt.stride, fmt.posoff, gstate.worldMatrix);
+		}
+		if (LCSShadow::IsActive()) {
+			const DecVtxFormat &fmt = dec_->GetDecVtxFmt();
+			if (LCSShadow::CaptureDraw(prim, dec_->VertexType(), vertexCount, decoded_, numDecodedVerts_,
+					decIndex_, fmt.stride, fmt.posoff, fmt.uvfmt, fmt.uvoff, gstate.worldMatrix,
+					gstate.getTextureAddress(0))) {
+				ResetAfterDrawInline();
+				return;
+			}
+		}
 
 		u16 *inds = decIndex_;
 
@@ -463,6 +523,9 @@ void DrawEngineVulkan::Flush() {
 				if (gstate_c.dstSquared) {
 					gstate_c.Dirty(DIRTY_BLEND_STATE);
 				}
+			}
+			if (LCSShadow::IsActive()) {
+				LCSShadow::NoteCutoutTexture((void *)imageView);  // Fork-specific
 			}
 			if (!lastPipeline_ || gstate_c.IsDirty(DIRTY_BLEND_STATE | DIRTY_VIEWPORTSCISSOR_STATE | DIRTY_RASTER_STATE | DIRTY_DEPTHSTENCIL_STATE | DIRTY_VERTEXSHADER_STATE | DIRTY_FRAGMENTSHADER_STATE) || prim != lastPrim_) {
 				if (prim != lastPrim_ || gstate_c.IsDirty(DIRTY_BLEND_STATE | DIRTY_VIEWPORTSCISSOR_STATE | DIRTY_RASTER_STATE | DIRTY_DEPTHSTENCIL_STATE)) {

@@ -3,8 +3,8 @@ GTA: Liberty City Stories - PC version
 
 **Grand Theft Auto: Liberty City Stories**, the 2005 PSP game, made to play like a PC GTA: mouse
 look and mouse aiming, WASD, a gamepad laid out like a PC game's, a GPS route on the radar, HD
-textures, SMAA, a 60 fps option and a GTA-style menu. The game's tutorial messages name your keys
-instead of PSP buttons.
+textures, sun shadows, a shaded sea and wet streets, SMAA, a 60 fps option and a GTA-style menu.
+The game's tutorial messages name your keys instead of PSP buttons.
 
 It runs on **Windows**. Bring your own copy of the game: no game files are included.
 
@@ -50,6 +50,10 @@ The first run remembers the disc. Keep the folder together: your saves and setti
 - **A GPS route.** Place a marker on the map, or take a mission, and the radar draws the route
   along the roads.
 - **HD textures**, included and switched on: the menus and the HUD, and a growing share of the city.
+- **Sun shadows** that follow the time of day, cast by the city, its trees and its people,
+  with ambient occlusion as an option.
+- **Water**: a shaded sea with waves, reflections and sun glint, and streets that go wet and
+  glossy when it rains.
 - **SMAA anti-aliasing** over the world, before the HUD so its text stays sharp.
 - **A 60 fps option**, with the game still running at its own speed.
 
@@ -101,8 +105,8 @@ The first run remembers the disc. Keep the folder together: your saves and setti
 ## Settings worth knowing
 
 - **Display setup → Frame limiter** switches 30 and 60 fps.
-- **Display setup → Advanced** has the texture quality (HD or the PSP's own), anti-aliasing and
-  world memory.
+- **Display setup → Advanced** has the texture quality (HD or the PSP's own), shadows, ambient
+  occlusion, water, anti-aliasing and world memory.
 - **Gameplay** has the auto-save, the GPS route, the language, and the game's own subtitles, HUD
   and radar settings.
 - Settings are saved to `memstick/PSP/SYSTEM/lcs.ini`.
@@ -127,7 +131,7 @@ a populated `memstick/` folder, which you can copy from a release.
 | path | what it is |
 |---|---|
 | `Core/LCS/` | the game layer: input, the chase camera, aiming, the GPS route, the menu bridge, saves, settings, memory addresses |
-| `GPU/Common/LCSSmaa.*` | anti-aliasing |
+| `GPU/Common/LCS*.*` | anti-aliasing, sun shadows, water |
 | `UI/LCSMenuScreen.*` | the menu, the start screen |
 | `assets/lcs/` | the menu's backdrop, typeface and sounds |
 | `Tools/lcs*.py` | packaging, the keyboard-text patcher, the HD texture tools, and reverse-engineering tools |

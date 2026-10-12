@@ -1644,7 +1644,10 @@ void VKContext::DrawIndexedUP(const void *vdata, int vertexCount, const void *id
 	uint32_t ibBindOffset;
 	uint8_t *idataPtr = push_->Allocate(idataSize, 4, &vulkanIbuf, &ibBindOffset);
 	_assert_(idataPtr != nullptr);
-	memcpy(idataPtr, vdata, idataSize);
+	// Fork-specific: idata, not vdata (an upstream bug; nothing in PPSSPP calls DrawIndexedUP, the
+	// LCS shadow passes are its first user). The vertices as indices still draw a mesh, of garbage
+	// triangles that cover the screen many times: 30 fps to 8 on the LCS shadows.
+	memcpy(idataPtr, idata, idataSize);
 
 	uint32_t ubo_offset = (uint32_t)curPipeline_->PushUBO(push_, vulkan_, &vulkanUBObuf);
 

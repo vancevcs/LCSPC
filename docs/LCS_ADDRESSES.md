@@ -519,6 +519,18 @@ A save restores the first five (`0x088b21a4`..).
 | the map's marker | a place blip (type 4), sprite 49 | placed one live: a new blip at the cursor |
 | pools | vehicles `[0x08b4c540]` 0x6e0, peds `[0x08b4c53c]` 0xcb0, objects `[0x08b4c54c]` 0x220; {entries, flags, capacity} | GetAt `0x08afb924` / `0x08afb978` / `0x08afb8dc`; the player's car and ped resolve from their handles |
 
+### Weather, the clock and the sun - live and static, [lcs/shadows-and-water.md](lcs/shadows-and-water.md)
+
+| | where | how found |
+|---|---|---|
+| weather types | old `0x08b5e484`, new `0x08b5e486`, forced `0x08b5e508` (s16 each), interpolation `0x08b5e50c` (f32) | force_weather (01BA, `0x08932db0`) writes the forced type, force_weather_now (`0x08932dbc`) it and old and new, release_weather (`0x08932dd8`) -1; CWeather::Update `0x08933fa0` |
+| CWeather::Rain | `0x08b5e180` f32 | the float that read 0.5 with types 2 and 5 forced, 0 with 0, 1 and 3, within a second: VCS's Rain to the value |
+| CClock hours, minutes | `0x08b5e1a8`, `0x08b5e1a9` u8 | a byte stepping once a real second, the hour beside it; written live, the HUD clock and the sky follow |
+| the sun | from the clock: normalise(sin a, 1, 0.2 - cos a), a the day's angle | GTA III's CTimeCycle formula; the game's directional light frame (an RwFrame on the heap) holds exactly its negation at eleven hours read |
+| the time cycle's light colour | `0x08b558c0`, three f32 0..1 | moved with the clock in a RAM diff: 0.36 at midnight, 1.0 at noon (the table in shadows-and-water.md). Derived every frame |
+
+The GE gets no sun: light channel 0 is (0.052, 0.999, 0) at every hour, on Toni's few lit draws.
+
 ### The frame boundary's return address `0x08ab33a0`
 
 The `jal sceKernelGetSystemTimeWide` at `0x08ab3398`, the first call after the frame wait loop:

@@ -30,6 +30,7 @@ NOTICE line, and Debug -> LCS shows the reason.
 | compat flag | `Core/Compatibility.h/.cpp`, `assets/compat.ini` | |
 | `LCS::WantsExtraWorldMemory()` | `InitMemorySizeForGame()` in `Core/PSPLoaders.cpp` | the partition is sized while the ISO loads, before `LCS::Init`; it reads `lcs.ini` itself (world-memory.md) |
 | `LCSSmaa` | `DrawEngineVulkan` (constructor, destructor, `DestroyDeviceObjects`, top of `Flush`) and `GPU_Vulkan::BeginHostFrame` | the seam between the world and the HUD is a flush, and the pass binds targets of its own (anti-aliasing.md) |
+| `LCSShadow`, `LCSWater` | the same, before SMAA in `Flush`; the capture at both decode sites in `Flush`; `DrawIndexedUP` in `thin3d_vulkan.cpp` fixed (`idata`) | the same seam; the capture needs every draw's decoded vertices, and the passes are DrawIndexedUP's first user (shadows-and-water.md) |
 | Debug -> LCS | `UI/ImDebugger/ImDebugger.cpp/.h` (menu item, draw call, `lcsOpen` ini key) | |
 | `LCS::HandleHostKey()` | `NativeKey()`, in the `passKeyThrough` branch, before `g_controlMapper.Key` | a claimed key must not also reach the mapper |
 | `LCS::HandleHostAxis()` | `NativeAxis()`, every axis, before the mapper (which gets the unclaimed ones, under the old screen gate) | the pad scheme's sticks and triggers; told even under a screen, so a trigger let go there is still a release (input.md "The pad") |
@@ -68,6 +69,8 @@ Core/LCS/            no ImGui, UI or renderer dependencies
   LCSSaveDialog.h    what the firmware's savedata dialog shows (filled in by PSPSaveDialog)
   LCSMips.h          encoders for programs written into PSP memory
 GPU/Common/LCSSmaa  SMAA over the world before the HUD, Vulkan only (anti-aliasing.md)
+GPU/Common/LCSShadow  sun shadows and ambient occlusion, VCS's ported; the sun from the clock (shadows-and-water.md)
+GPU/Common/LCSWater   the shaded sea and wet roads, VCS's ported (shadows-and-water.md)
 UI/ImDebugger/ImLCS  the Debug -> LCS window (state, table, input, aim, PSP pad, camera, scratchpad)
 UI/LCSMenuScreen     the front end: the pause menu over LCS, its pages, the cheats (front-end.md)
 UI/LCSDevInput       dev only: LCS_KEY_PIPE scripted keys and mouse

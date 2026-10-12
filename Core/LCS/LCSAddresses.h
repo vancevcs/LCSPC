@@ -207,6 +207,25 @@ inline constexpr u32 kLCSEntityRightOffset = 0x00;
 inline constexpr u32 kLCSEntityForwardOffset = 0x10;
 inline constexpr u32 kLCSEntityUpOffset = 0x20;
 inline constexpr u32 kLCSEntityPositionOffset = 0x30;
+// TheCamera's own matrix: front at +0x10, up at +0x20, the position (world units) at +0x30.
+inline constexpr u32 kLCSCameraPosOffset = 0x30;
+// CWeather: force_weather (01BA, 0x08932db0) writes the forced type, force_weather_now (0x08932dbc)
+// it and the old and new types, release_weather (0x08932dd8) -1. All s16. CWeather::Update
+// (0x08933fa0) interpolates from old to new by the float at 0x08b5e50c.
+inline constexpr u32 kLCSWeatherOld = 0x08B5E484;
+inline constexpr u32 kLCSWeatherNew = 0x08B5E486;
+inline constexpr u32 kLCSWeatherForced = 0x08B5E508;
+inline constexpr u32 kLCSWeatherInterp = 0x08B5E50C;
+// CClock: the hour and the minute, u8 each. The minute steps once a real second; written live, the
+// HUD clock and the sky follow (docs/lcs/shadows-and-water.md "The sun").
+inline constexpr u32 kLCSClockHours = 0x08B5E1A8;
+inline constexpr u32 kLCSClockMinutes = 0x08B5E1A9;
+// The time cycle's light colour, three floats 0..1 (r g b): 0.36 at midnight, 1.0 at noon, measured
+// hour by hour. Derived every frame. What the shadows' strength follows through the day.
+inline constexpr u32 kLCSTimeCycleLight = 0x08B558C0;
+// CWeather::Rain (f32): 0.5 with weather 2 or 5 forced, 0 with 0, 1 or 3, within a second of the
+// force - the VCS fork's measurement of its Rain, to the value (docs/lcs/shadows-and-water.md).
+inline constexpr u32 kLCSWeatherRain = 0x08B5E180;
 inline constexpr u32 kLCSEntityModelOffset = 0x58;
 // CModelInfo::ms_modelInfoPtrs (a pointer to the array) and its length. CBaseModelInfo's
 // CColModel * is at +0x14; a CColModel's bounding box at +0x10 (min) and +0x20 (max).

@@ -305,7 +305,8 @@ for the three weapon sets, all three confirmed (weapons appear in `ped+0x594`). 
 from that file once per frame (header comment has the syntax) and feed them to `NativeKey` and
 `LCS::HandleMouseDelta`; `PAD:A` (`LB`, `RS`, `START`, `VIEW`, `DUP`...) is an XInput pad's button,
 and `axis LT 1` (`LX LY RX RY LT RT`) its axis, through `NativeAxis`; `savestate <path>` and `loadstate <path>` make and load fixtures
-(chase-camera.md "Testing" has one in a car). Nothing reaches Windows. Read the result back over
+(chase-camera.md "Testing" has one in a car); `set <key> <value>` sets an lcs.ini row live without
+saving it (`set Shadows 0`), and `fps` logs the frame rate (shadows-and-water.md measured with both). Nothing reaches Windows. Read the result back over
 the debugger: the game's own `NewState` at `Pads[0]+0x02` shows which PSP buttons a key produced.
 Three traps:
 

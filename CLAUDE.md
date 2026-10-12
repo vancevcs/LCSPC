@@ -19,9 +19,10 @@ entries.
 - **No hardcoded addresses outside `Core/LCS/LCSAddresses.h`.**
 - **It must build and run with any subset of addresses unset.**
 - **Minimal diff to upstream.** Every upstream edit is a few lines marked "Fork-specific".
-- **Anonymous commits, no remote.** The repo-local identity is `lcspc <lcspc@noreply.invalid>` with
-  `user.useConfigOnly`; never commit or tag with the global (personal) identity. There is no GitHub
-  remote; don't add one or push without asking.
+- **Anonymous commits.** The repo-local identity is `vancevcs <325706072+vancevcs@users.noreply.github.com>`
+  with `user.useConfigOnly`, as the VCS fork's; never commit or tag with the global (personal) identity.
+  The remote `vancevcs` is the public github.com/vancevcs/LCSPC: ask before every push or release
+  (docs/lcs/release.md).
 
 ## Build and run
 - `workshop.txt` beside the exe keeps the Release build the workshop (logo, game list, menu bar, ImGui,
@@ -57,6 +58,7 @@ Core/LCS/ (no ImGui, UI, or renderer dependencies)
                   the loading curtain, the game's own settings (LCSSaveDialog.h: the savedata peek)
   LCSMips.h       encoders for programs written into PSP memory
 GPU/Common/LCSSmaa    SMAA over the world before the HUD (Vulkan)
+GPU/Common/LCSShadow, LCSWater   VCS's sun shadows + AO and shaded sea + wet roads, ported (Vulkan)
 UI/ImDebugger/ImLCS   the "LCS" debugger window (Debug -> LCS)
 UI/LCSMenuScreen      the front end: the pause menu Escape raises over LCS (assets/lcs/)
 UI/LCSDevInput        dev only: LCS_KEY_PIPE scripted keys and mouse (docs/lcs/input.md "Testing")
@@ -71,7 +73,7 @@ Tools/lcspackage.py   the release folder and zip (docs/lcs/release.md)
 Seams: init/shutdown in `__KernelInit`/`__KernelShutdown`; fingerprint in `__KernelLoadELFFromPtr`;
 tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys, mouse and pad in `NativeKey` /
 `NativeMouseDelta` / `NativeAxis`; the frame boundary in `sceKernelGetSystemTimeWide`; by-address hooks in
-`Core/HLE/ReplaceTables.*`; the memory partition in `InitMemorySizeForGame`; SMAA in
+`Core/HLE/ReplaceTables.*`; the memory partition in `InitMemorySizeForGame`; SMAA, shadows and water in
 `DrawEngineVulkan::Flush`; the pause screen in `CreatePauseScreen` (EmuScreen), the curtain and
 the GPS line in `DrawLCSOverlay` (EmuScreen::renderUI); the savedata dialog in
 `LCS::PeekSaveDialog` (sceUtility); the intro's end in `sceIoOpen`; disc patches in
@@ -109,6 +111,7 @@ table: docs/lcs/architecture.md.
 | docs/lcs/free-aim.md | the game's free aim, the gun target, the fire hook, the sniper / rocket scope, measurements, the armed fixtures | touching aiming or shooting |
 | docs/lcs/world-memory.md | the PSP-2000 partition and the game's own larger streaming heap | touching memory size or draw distance |
 | docs/lcs/anti-aliasing.md | SMAA, where it runs, the world drawn in pieces, the debug views | touching LCSSmaa or the draw engine seam |
+| docs/lcs/shadows-and-water.md | the VCS passes on LCS: the sun from the clock, the sea's signature, the early seam, rain, the levers | touching LCSShadow, LCSWater, the clock or the weather |
 | docs/lcs/front-end.md | the pause menu, the game's own pages, load / new game / auto-save, the curtain, the game's settings | touching the menu, a setting, or anything that drives the game's menu |
 | docs/lcs/gps.md | the GPS route: ThePaths, switched-off roads, the blips and pools, the radar's transform, measurements | touching the route, the radar or the blips |
 | docs/lcs/release.md | the game build (PresentAsGame, workshop.txt), the start screen and its disc check, the package | touching anything the release shows, or packaging |

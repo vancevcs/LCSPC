@@ -43,6 +43,7 @@ namespace {
 struct RoadNode {
 	float x = 0.0f;
 	float y = 0.0f;
+	float z = 0.0f;
 	int firstLink = 0;
 	int linkCount = 0;
 };
@@ -150,6 +151,7 @@ bool LoadGraph(u32 paths) {
 		const u32 rec = *nodeArray + i * kLCSPathNodeStride;
 		const std::optional<u16> x = ReadU16(rec + kLCSPathNodePos);
 		const std::optional<u16> y = ReadU16(rec + kLCSPathNodePos + 2);
+		const std::optional<u16> z = ReadU16(rec + kLCSPathNodePos + 4);
 		const std::optional<u16> first = ReadU16(rec + kLCSPathNodeFirstLink);
 		const std::optional<u8> flags = ReadU8(rec + kLCSPathNodeFlags);
 		if (!x || !y || !first || !flags) {
@@ -159,6 +161,7 @@ bool LoadGraph(u32 paths) {
 		RoadNode &n = g_nodes[i];
 		n.x = (float)(s16)*x / kLCSPathNodeScale;
 		n.y = (float)(s16)*y / kLCSPathNodeScale;
+		n.z = (float)(s16)z.value_or(0) / kLCSPathNodeScale;
 		n.firstLink = (int)(s16)*first;
 		n.linkCount = *flags & 0x0f;
 		if (n.firstLink < 0 || n.firstLink + n.linkCount > linkSpace) {
@@ -645,6 +648,32 @@ void RouteReset() {
 	g_recompute = 0;
 	g_searches = 0;
 	Publish("off", false, {});
+}
+
+bool EnsureRoadGraph() {
+	return EnsureGraph() && !g_nodes.empty();
+}
+
+int RoadNodeCount() {
+	return (int)g_nodes.size();
+}
+
+bool RoadNodeAt(int index, RoutePoint *out) {
+	if (index < 0 || index >= (int)g_nodes.size()) {
+		return false;
+	}
+	out->x = g_nodes[index].x;
+	out->y = g_nodes[index].y;
+	out->z = g_nodes[index].z;
+	return true;
+}
+
+bool RoadLinkAt(int node, int slot, int *otherNode) {
+	if (node < 0 || node >= (int)g_nodes.size() || slot < 0 || slot >= g_nodes[node].linkCount) {
+		return false;
+	}
+	*otherNode = g_links[g_nodes[node].firstLink + slot];
+	return *otherNode >= 0;
 }
 
 bool GetRouteSegments(RouteDraw *out) {
