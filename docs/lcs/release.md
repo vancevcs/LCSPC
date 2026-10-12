@@ -95,6 +95,7 @@ In the code, each a few lines:
 | `LCS::GameFolder()`: the folder holding the .app (the exe's folder elsewhere), resolved past App Translocation; workshop.txt and a disc are looked for there | Core/LCS/LCSGame.cpp, UI/LCSMenuScreen.cpp |
 | a `memstick` beside the app is the memory stick, as one beside the exe is on Windows | UI/NativeApp.cpp |
 | the window titled as the game, and the bundle's icon left in the Dock | SDL/SDLMain.cpp |
+| the mouse captured in game while LCS's keyboard and mouse are on, `ConfineMap` or not: SDL's motion stops at the screen's edge (Windows reads raw input, which doesn't), and the cursor showed | SDL/SDLMain.cpp `MouseCaptureControl` |
 | `assets/lcs` in the bundle (upstream lists the assets a bundle gets; Windows copies the folder) | CMakeLists.txt `NativeAssets` |
 | the menu's face found: NSBundle takes no path in a resource name, so `lcs/pricedown` is looked up in `assets/lcs` | Common/Render/Text/draw_text_cocoa.mm |
 
@@ -105,4 +106,6 @@ Measured on the unzipped package, launched through `open` (working directory `/`
 Vulkan through the bundled MoltenVK on an M1, the window titled "Grand Theft Auto: Liberty City
 Stories", the start screen in Pricedown over the backdrop, "no disc" with nothing beside the app and
 "junk.iso isn't a PSP disc image" with a file of zeroes there, settings written into the `memstick`
-beside the app, and a clean quit. Not yet run with the disc.
+beside the app, and a clean quit. With the disc (LCS active, a new game): the cursor hidden and held
+at the window's centre in game, free over the PAUSED menu after Esc, held again after a second Esc
+(LCS_KEY_PIPE presses; CGCursorIsVisible and the cursor's position from outside the app).

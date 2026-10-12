@@ -67,6 +67,7 @@ SDLJoystick *joystick = NULL;
 #include "Core/Config.h"
 #include "Core/ConfigValues.h"
 #include "Core/LCS/LCSGame.h"  // Fork-specific: PresentAsGame
+#include "Core/LCS/LCSInput.h"  // Fork-specific: KeyboardLayerOn
 #include "SDLGLGraphicsContext.h"
 #include "SDLUtil.h"
 
@@ -1279,7 +1280,10 @@ void UpdateWindowState(SDL_Window *window) {
 
 struct InputStateTracker {
 	void MouseCaptureControl(SDL_Window *window) {
-		bool captureMouseCondition = g_Config.bMouseControl && ((GetUIState() == UISTATE_INGAME && g_Config.bMouseConfine) || g_IsMappingMouseInput);
+		// Fork-specific: LCS's mouse look and map drag need the mouse captured in game, confine setting
+		// or not. Windows reads raw input, which keeps coming at the screen's edge; SDL's motion stops there.
+		const bool confine = g_Config.bMouseConfine || LCS::KeyboardLayerOn();
+		bool captureMouseCondition = g_Config.bMouseControl && ((GetUIState() == UISTATE_INGAME && confine) || g_IsMappingMouseInput);
 		if (mouseCaptured != captureMouseCondition) {
 			mouseCaptured = captureMouseCondition;
 			SDL_SetWindowRelativeMouseMode(window, captureMouseCondition);
