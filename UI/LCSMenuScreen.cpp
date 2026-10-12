@@ -110,8 +110,9 @@ static constexpr float kListPadding = 22.0f;
 static constexpr float kListHeaderHeight = 46.0f;
 static constexpr float kListPanelInsetFrac = 0.023f;
 static constexpr float kListNameFrac = 0.047f;
-static constexpr float kListDeviceFrac[] = { 0.42f, 0.74f };
-static const char *const kListHeaders[] = { "ACTION", "KEYBOARD AND MOUSE", "PSP" };
+// The VCS fork's card: the keyboard, then each pad by its own names.
+static constexpr float kListDeviceFrac[] = { 0.33f, 0.555f, 0.755f };
+static const char *const kListHeaders[] = { "ACTION", "KEYBOARD AND MOUSE", "XBOX CONTROLLER", "PLAYSTATION CONTROLLER" };
 static_assert(ARRAY_SIZE(kListHeaders) == ARRAY_SIZE(kListDeviceFrac) + 1, "a heading per column");
 static const char *const kListKeySeparator = " / ";
 static const uint32_t kListPanelColor = 0x40000000;
@@ -525,7 +526,8 @@ LCSBindingRow::LCSBindingRow(const LCS::KeyListingRow &row, UI::LayoutParams *la
 		keys += key;
 	}
 	cells_.push_back(keys);
-	cells_.push_back(row.psp);
+	cells_.push_back(row.xbox);
+	cells_.push_back(row.playstation);
 }
 
 void LCSBindingRow::GetContentDimensions(const UIContext &dc, float &w, float &h) const {
@@ -913,12 +915,27 @@ bool LCSMenuScreen::key(const KeyInput &key) {
 			pendingEmulatorMenu_ = true;
 			return true;
 		}
+		// A pad's Start opened this menu and closes it again, from any page.
+		const InputKeyCode named = LCS::NamedPadButton(key);
+		if (LCS::IsPadDevice(key.deviceId) && named == NKCODE_BUTTON_START) {
+			PlayMenuSound(UI::UISound::LCS_BACK);
+			TriggerFinish(DR_CANCEL);
+			return true;
+		}
 		// Back is up one level, not "close the menu": the page table's parent link. Backspace
 		// too, as the controls card lists it. Out of the root it resumes, as Escape always has.
-		if (UI::IsEscapeKey(key) || key.keyCode == NKCODE_DEL) {
+		// A PlayStation pad on Windows' HID driver is asked by what the button is: PPSSPP's generic
+		// defaults put its Circle on the PSP's Triangle, so IsEscapeKey said no to Circle.
+		const bool psPad = named != key.keyCode;
+		const bool back = psPad ? named == NKCODE_BUTTON_B : UI::IsEscapeKey(key);
+		if (back || key.keyCode == NKCODE_DEL) {
 			if (!GoBack()) {
 				TriggerFinish(DR_CANCEL);
 			}
+			return true;
+		}
+		// ...and its Triangle, which PPSSPP calls Circle, mustn't close the menu from the dialog base.
+		if (psPad && UI::IsEscapeKey(key)) {
 			return true;
 		}
 	}

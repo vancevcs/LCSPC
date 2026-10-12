@@ -57,8 +57,17 @@ struct KeyMapping {
 extern const KeyMapping kKeyMappings[];
 extern const size_t kKeyMappingCount;
 
-// From NativeKey. True when the key is claimed (PPSSPP's mapper must not also see it).
+// From NativeKey. True when the key is claimed (PPSSPP's mapper must not also see it). A pad's
+// buttons come here too and go down their own path (kPadMappings).
 bool HandleHostKey(const KeyInput &key);
+// From NativeAxis, for every axis whether or not a screen is up: an axis carries its whole state, so
+// a trigger let go under a menu is still a release here. True when the pad scheme claims it.
+bool HandleHostAxis(const AxisInput &axis);
+// A pad of any kind (DirectInput, XInput, SDL, the HID driver).
+bool IsPadDevice(InputDeviceID device);
+// A pad's button by what it is: a PlayStation pad on Windows' HID driver reports numbers (Cross is
+// BUTTON_2), turned into the names the table speaks (BUTTON_A). Anything else as it came.
+InputKeyCode NamedPadButton(const KeyInput &key);
 // From NativeMouseDelta. True when the mouse is driving the camera.
 bool HandleMouseDelta(float dx, float dy);
 
@@ -110,6 +119,9 @@ struct KeyListingRow {
 	std::vector<std::string> keys;
 	std::string psp;
 	std::vector<KeyBindPart> parts;
+	// The pad scheme's buttons for the same action, by each pad's own names ("RT", "R2").
+	std::string xbox;
+	std::string playstation;
 };
 std::vector<KeyListingRow> KeyListing(InputContext context);
 

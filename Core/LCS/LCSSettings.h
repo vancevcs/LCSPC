@@ -89,12 +89,23 @@ struct LCSSettings {
 	bool gameInvertLook = false;  // the stick's look up and down (the game's INVERT LOOK)
 	float padLookSensitivity = 0.007f;  // squared in the game's look response
 
+	// A pad laid out like the PC game's (LCSInput's kPadMappings): triggers aim and fire, the right
+	// stick turns the camera. Off gives a pad the PSP's own layout through PPSSPP's mapper.
+	bool padScheme = true;
+	// The right stick's look, in mouse counts a vblank at full deflection: it goes into the mouse's
+	// accumulator, so the sensitivity, the FOV scale and the free aim behind it are the mouse's.
+	float padLookSpeed = 14.0f;
+	bool padInvertLookY = false;
+
 	// The save slot (the S<n> of ULUS10041S<n>) the auto-save last wrote, so the save list can say
 	// which it is; -1 before the first. Written by LCSFrontEnd.
 	int autoSaveSlot = -1;
 };
 
 LCSSettings &Settings();
+// The fork turns the camera (the chase camera, free aim, the scope) from the mouse or a pad's right
+// stick: mouse look on, and keyboard and mouse or the pad scheme with it.
+bool CameraLookOwned();
 void LoadSettings();
 void SaveSettings();
 // lcs.ini's WorldMemory, read straight from the file: the partition is sized while the ISO loads,

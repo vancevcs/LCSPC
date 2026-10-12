@@ -65,8 +65,8 @@ Tools/lcstxd.py       texture tool ported from VCS (+ lcsrw, lcsmatch): PC packs
 Tools/lcstxdweb.py    the OBB's HD textures in the browser pane, manual binds
 
 Seams: init/shutdown in `__KernelInit`/`__KernelShutdown`; fingerprint in `__KernelLoadELFFromPtr`;
-tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys and mouse in `NativeKey` /
-`NativeMouseDelta`; the frame boundary in `sceKernelGetSystemTimeWide`; by-address hooks in
+tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys, mouse and pad in `NativeKey` /
+`NativeMouseDelta` / `NativeAxis`; the frame boundary in `sceKernelGetSystemTimeWide`; by-address hooks in
 `Core/HLE/ReplaceTables.*`; the memory partition in `InitMemorySizeForGame`; SMAA in
 `DrawEngineVulkan::Flush`; the pause screen in `CreatePauseScreen` (EmuScreen), the curtain and
 the GPS line in `DrawLCSOverlay` (EmuScreen::renderUI); the savedata dialog in

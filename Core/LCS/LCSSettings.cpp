@@ -41,6 +41,11 @@ static Path SettingsPath() {
 	return GetSysDirectory(DIRECTORY_SYSTEM) / "lcs.ini";
 }
 
+bool CameraLookOwned() {
+	const LCSSettings &s = Settings();
+	return s.mouseLook && (s.keyboardMouse || s.padScheme);
+}
+
 LCSSettings &Settings() {
 	return g_settings;
 }
@@ -83,7 +88,6 @@ static std::string ResolutionText(const Option &opt) {
 // What the rows for things not built yet edit: in memory only, never saved, so no ini key is
 // promised before the feature exists. The values are the ones the VCS fork ships.
 static struct {
-	bool padScheme = true;
 	bool customTracks = false;
 	int widescreen = 0;
 	int shadows = 1;
@@ -239,15 +243,20 @@ const std::vector<Option> &Options() {
 
 		// --- Controller ---
 
-		addBool(OptionPage::Controller, nullptr, "Controller scheme",
-			"A pad laid out like the PC game's, with the right stick on the camera.",
-			&g_placeholder.padScheme);
-		placeholder();
-		addFloat(OptionPage::Controller, "PadLookSensitivity", "Look sensitivity",
-			"How fast the stick turns the camera when you look around. The game's own speed is the middle.",
+		addBool(OptionPage::Controller, "PadScheme", "Controller scheme",
+			"Triggers aim and fire, the right stick turns the camera. Off gives a pad the PSP's own layout.",
+			&s.padScheme);
+		addFloat(OptionPage::Controller, "PadLookSpeed", "Look sensitivity",
+			"How fast the right stick turns the camera.", &s.padLookSpeed, 4.0f, 40.0f);
+		enabledBy(&s.padScheme);
+		addBool(OptionPage::Controller, "PadInvertLookY", "Invert look vertically",
+			"Push the right stick forward to look down.", &s.padInvertLookY);
+		enabledBy(&s.padScheme);
+		addFloat(OptionPage::Controller, "PadLookSensitivity", "PSP look sensitivity",
+			"With the PSP layout: how fast the stick turns the camera when you look around. The game's own speed is the middle.",
 			&s.padLookSensitivity, 0.002f, 0.012f);
-		addBool(OptionPage::Controller, "GameInvertLook", "Invert look vertically",
-			"Push the stick forward to look down. The game's own INVERT LOOK.", &s.gameInvertLook);
+		addBool(OptionPage::Controller, "GameInvertLook", "PSP invert look",
+			"With the PSP layout: push the stick forward to look down. The game's own INVERT LOOK.", &s.gameInvertLook);
 		addFloat(OptionPage::Controller, nullptr, "Stick deadzone",
 			"How far a stick must move before it counts. PPSSPP's own setting.",
 			&g_Config.fAnalogDeadzone, 0.0f, 0.5f);

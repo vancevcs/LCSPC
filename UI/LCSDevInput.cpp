@@ -37,8 +37,29 @@
 
 extern ScreenManager *g_screenManager;  // UI/NativeApp.cpp
 
+// A pad's button, as an XInput pad sends it: "PAD:A", "PAD:LB", "PAD:START", "PAD:DUP".
+static bool ParsePadButton(const std::string &name, InputKeyCode *code) {
+	static const struct { const char *name; InputKeyCode code; } kButtons[] = {
+		{ "A", NKCODE_BUTTON_A }, { "B", NKCODE_BUTTON_B }, { "X", NKCODE_BUTTON_X }, { "Y", NKCODE_BUTTON_Y },
+		{ "LB", NKCODE_BUTTON_L1 }, { "RB", NKCODE_BUTTON_R1 }, { "LS", NKCODE_BUTTON_THUMBL }, { "RS", NKCODE_BUTTON_THUMBR },
+		{ "START", NKCODE_BUTTON_START }, { "VIEW", NKCODE_BUTTON_SELECT },
+		{ "DUP", NKCODE_DPAD_UP }, { "DDOWN", NKCODE_DPAD_DOWN }, { "DLEFT", NKCODE_DPAD_LEFT }, { "DRIGHT", NKCODE_DPAD_RIGHT },
+	};
+	for (const auto &b : kButtons) {
+		if (equalsNoCase(name, b.name)) {
+			*code = b.code;
+			return true;
+		}
+	}
+	return false;
+}
+
 static bool ParseDevKey(const std::string &name, InputKeyCode *code, InputDeviceID *device) {
 	*device = DEVICE_ID_KEYBOARD;
+	if (name.size() > 4 && equalsNoCase(name.substr(0, 4), "PAD:")) {
+		*device = DEVICE_ID_XINPUT_0;
+		return ParsePadButton(name.substr(4), code);
+	}
 	if (name.size() == 6 && equalsNoCase(name.substr(0, 5), "MOUSE") && name[5] >= '1' && name[5] <= '5') {
 		static const InputKeyCode kButtons[] = {
 			NKCODE_EXT_MOUSEBUTTON_1, NKCODE_EXT_MOUSEBUTTON_2, NKCODE_EXT_MOUSEBUTTON_3,
@@ -136,6 +157,28 @@ void LCSDevKeyPipeTick() {
 				LCS::QueuePadTaps(masks);
 			} else {
 				NOTICE_LOG(Log::System, "LCS_KEY_PIPE: no PSP button called '%s'", bad.c_str());
+			}
+			continue;
+		}
+		if (verb == "axis") {
+			// An XInput pad's axis through NativeAxis, as a real one arrives: "axis LT 1", "axis RX 0.5".
+			// LX LY RX RY (Y positive pushed away), LT RT.
+			static const struct { const char *name; InputAxis axis; } kAxes[] = {
+				{ "LX", JOYSTICK_AXIS_X }, { "LY", JOYSTICK_AXIS_Y }, { "RX", JOYSTICK_AXIS_Z },
+				{ "RY", JOYSTICK_AXIS_RZ }, { "LT", JOYSTICK_AXIS_LTRIGGER }, { "RT", JOYSTICK_AXIS_RTRIGGER },
+			};
+			char name[8] = {};
+			float value = 0.0f;
+			if (sscanf(arg.c_str(), "%7s %f", name, &value) == 2) {
+				for (const auto &a : kAxes) {
+					if (equalsNoCase(name, a.name)) {
+						AxisInput axis{};
+						axis.deviceId = DEVICE_ID_XINPUT_0;
+						axis.axisId = a.axis;
+						axis.value = value;
+						NativeAxis(&axis, 1);
+					}
+				}
 			}
 			continue;
 		}

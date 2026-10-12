@@ -38,13 +38,13 @@ its table row a variable and an ini key.
 | root | RESUME, START NEW GAME (to the game page), MAP, STATS, BRIEF (the game's own pages), CHEATS, OPTIONS, QUIT GAME | |
 | game | NEW GAME, LOAD GAME and DELETE GAME: the saves on the memory stick (each `ULUS10041S*/PARAM.SFO`), `*` on the newest, `(AUTO)` on the auto-save's slot | |
 | mouse | keyboard and mouse, mouse look, sensitivity, invert, on-foot camera, vehicle camera, vehicle camera follows | |
-| controller | look sensitivity and invert look (the game's, for the stick), stick deadzone (PPSSPP's) | controller scheme (the VCS pad scheme) |
+| controller | controller scheme (the VCS pad scheme, input.md "The pad"), its right stick's sensitivity and invert, the PSP layout's look sensitivity and invert (the game's), stick deadzone (PPSSPP's) | |
 | aiming | free aim, aim sensitivity, invert aim (free aim's own channel), sniper and RPG sensitivity (the scope, free-aim.md) | |
 | audio | sound, master volume (PPSSPP's), SFX and radio volume (the game's) | custom soundtracks (the game's setter has to be called) |
 | display | brightness (the game's), resolution, fullscreen, show FPS (PPSSPP's), frame limiter (`FrameRate60`) | widescreen |
 | advanced | texture quality, anisotropic filtering (PPSSPP's), anti-aliasing, world memory | shadows, ambient occlusion, water |
 | gameplay | auto-save, GPS route (gps.md), language (next boot), subtitles, HUD, radar (the game's) | |
-| key bindings | the cards: on foot, in vehicle, menus, built from `kKeyMappings` (`LCS::KeyListing`); any line rebound by clicking it; RESET KEYS | |
+| key bindings | the cards: on foot, in vehicle, menus, built from `kKeyMappings` and `kPadMappings` (`LCS::KeyListing`), with Xbox and PlayStation columns; any keyboard line rebound by clicking it; RESET KEYS | |
 | cheats | all 35 rows | |
 
 Move-while-aiming and direct weapon selection, which VCS has rows for, are left out on purpose.

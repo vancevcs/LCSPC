@@ -1755,8 +1755,13 @@ void NativeAxis(const AxisInput *axes, size_t count) {
 		return;
 	}
 
-	if (g_screenManager->PassInputToMapper() & (InputMode::Other | InputMode::ImDebuggerToggle)) {
-		g_controlMapper.Axis(axes, count);
+	// Fork-specific: LCS's pad scheme is told about every axis, screen or not (a trigger let go under
+	// the menu is still a release), and keeps what it claims from the mapper.
+	const bool toMapper = (g_screenManager->PassInputToMapper() & (InputMode::Other | InputMode::ImDebuggerToggle)) != 0;
+	for (size_t i = 0; i < count; i++) {
+		if (!LCS::HandleHostAxis(axes[i]) && toMapper) {
+			g_controlMapper.Axis(&axes[i], 1);
+		}
 	}
 
 	QueuedEvent ev{};

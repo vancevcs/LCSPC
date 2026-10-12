@@ -140,6 +140,65 @@ Toni in the car): Q + left mouse fired 17 rounds out of the left window and E + 
 the right, which the first build never managed; C + fire and fire alone shot nothing, the game's
 own rule.
 
+## The pad
+
+The VCS fork's pad scheme (its input.md, "The gamepad is remapped"), on LCS's layout:
+`kPadMappings`, a second context table beside the keyboard's, and `LCS::HandleHostAxis`, the axis
+half, from `NativeAxis` as `HandleHostKey` is from `NativeKey`. Xbox names throughout; a
+PlayStation pad on PPSSPP's Windows HID driver reports numbers (Cross is `BUTTON_2`), turned into
+names at the door (`NamedPadButton`, keyed on the driver's pad names). `PadScheme` off (the
+Controller page) gives a pad the PSP's own layout through PPSSPP's mapper again.
+
+| control | on foot | in a vehicle | in the game's menu |
+|---|---|---|---|
+| left stick | move (a small push walks) | steer, lean | the game's nub |
+| right stick | the camera (free aim, the scope) | the chase camera | |
+| A B X Y | sprint, fire, jump, enter | horn, fire, handbrake (R), exit | Cross, Back, Square, Triangle |
+| LT / RT | lock on (R) / fire | brake (Square) / accelerate (Cross) | (claimed) |
+| LB / RB | the scope's zoom out / in; both: look behind (L + R) | look left / right (L + stick); both: behind | zoom (L / R) |
+| d-pad | weapons, side missions, free aim (down while locked) | stations, side missions, horn | the game's d-pad |
+| left / right stick click | L (phone, pickup swap) / camera (Select) | L (phone) / camera | (claimed) |
+| View | the game's pause menu (Start) | same | closes it (Start) |
+| Start | this fork's menu | same | same |
+
+The face buttons stay where the PSP had them on foot, since A B X Y sit where Cross Circle Square
+Triangle do. What moves is what a PSP had nowhere to put: aim and fire onto the triggers, the
+pedals onto them in a vehicle, the camera onto a stick, the looks onto the bumpers. The rules
+taken from VCS, each of which it learnt the hard way:
+
+- **Every control is claimed in every context.** PPSSPP's XInput defaults put its pause on the left
+  trigger, fast-forward on the right one and the speed toggle on the right stick click; an
+  unclaimed control opens a menu or triples the speed mid-fight. The `psp = 0` rows are that.
+- **The triggers press past 0.45 and let go below 0.35**: one line, where a finger rests, is
+  crossed on noise alone, and the right trigger is Fire.
+- **The right stick becomes mouse movement at the edge**: squared, sign kept, `PadLookSpeed`
+  counts a vblank at full deflection into the accumulator the mouse fills, so the chase camera,
+  free aim and the scope take it as they take the mouse. `CameraLookOwned` (mouse look on, with
+  keyboard and mouse or the pad scheme) is the one gate for all three, so a player who turns
+  keyboard and mouse off keeps the right stick.
+- **The pad aims by lock-on.** LT is R and nothing more (the mouse's free-aim pulse is for right
+  mouse alone); free aim is still the game's own d-pad down while locked, aimed by the right stick
+  through the mouse's path. The scope is the exception: LT is R, and the scope comes up.
+- **Axes are told regardless of the screen** (`NativeAxis` hands every one to the layer, then the
+  unclaimed ones to the mapper only if no screen is up): an axis carries its whole state, so a
+  trigger let go under the menu is still a release.
+- **Y signs come from PPSSPP's own mapping** (`PadYSigns`): XInput reports a stick positive pushed
+  away, DirectInput and the HID driver the other way.
+- **B on a page this fork opened is Back to this fork's menu**, the pad's half of the Backspace
+  rule; anywhere else in the game's menu it is the game's Circle.
+
+The cards (front-end.md "Key bindings") are four columns, as VCS's: action, keyboard and mouse,
+Xbox, PlayStation, the pad cells built from `kPadMappings` by the keyboard line's description.
+
+Measured through the pipe as an XInput pad (`press PAD:A`, `axis LT 1`, below), reading `Pads[0]`
+NewState: on foot A Cross, X Square, LT R, RT Circle, LB + RB L and R, LB alone nothing, the
+clicks Select and L, View Start (the game's menu opened, and closed on the second press); LT held
+at 0.4 after 1.0, let go at 0.3, and 0.4 from rest pressed nothing; the left stick at (0.5, 1)
+moved Toni 4.65 units in a second, centred again on release; the right stick at full deflection
+turned the camera 2.1 rad a second. In the car RT Cross, LT Square, X R, A Down, LB L with the
+stick at -128, RB L with +126, both L with the stick down, B Circle, Y Triangle. Start opened this
+menu and closed it again. Not tried on a real pad: no pad is on this desk.
+
 ## The game's own menu
 
 With the pause menu up the context is Menu (above). On a page this fork's menu opened (MAP, BRIEF,
@@ -210,7 +269,8 @@ for the three weapon sets, all three confirmed (weapons appear in `ped+0x594`). 
 
 `LCS_KEY_PIPE=<file>` makes `UI/LCSDevInput.cpp` read `press`/`down`/`up`/`look`/`wait` lines
 from that file once per frame (header comment has the syntax) and feed them to `NativeKey` and
-`LCS::HandleMouseDelta`; `savestate <path>` and `loadstate <path>` make and load fixtures
+`LCS::HandleMouseDelta`; `PAD:A` (`LB`, `RS`, `START`, `VIEW`, `DUP`...) is an XInput pad's button,
+and `axis LT 1` (`LX LY RX RY LT RT`) its axis, through `NativeAxis`; `savestate <path>` and `loadstate <path>` make and load fixtures
 (chase-camera.md "Testing" has one in a car). Nothing reaches Windows. Read the result back over
 the debugger: the game's own `NewState` at `Pads[0]+0x02` shows which PSP buttons a key produced.
 Three traps:
@@ -234,8 +294,8 @@ Three traps:
 
 - Walking while free-aiming (free-aim.md) and lock-on aimed with the mouse. The scoped weapons
   are done (free-aim.md "The scope").
-- Gamepads: the layer only claims keyboard and mouse; a pad goes to PPSSPP's mapper with the PSP
-  layout.
+- The pad on real hardware (only the pipe's XInput pad was measured), and a PlayStation pad's
+  number translation, read off PPSSPP's HID driver as in VCS.
 - Direct weapon selection by number.
 - The help text still names PSP buttons; VCS rewrote its GXT tokens to key names
   (`Tools/vcsgxtkeys.py` in the VCS fork). The token table above is where that starts.

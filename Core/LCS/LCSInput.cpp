@@ -22,6 +22,7 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,7 @@
 #include "Common/Log.h"
 #include "Common/StringUtils.h"
 #include "Common/System/Request.h"
+#include "Core/Config.h"
 #include "Core/HLE/sceCtrl.h"
 #include "Core/KeyMap.h"
 #include "Core/LCS/LCSAddresses.h"
@@ -148,6 +150,98 @@ static const GlanceKey kGlanceKeys[] = {
 // After the diagonal's normalisation, or W + D would be past it.
 static constexpr float kWalkDeflection = 0.45f;
 
+// --- The pad ---
+//
+// The VCS fork's pad scheme (its docs/vcs/input.md, "The gamepad is remapped"), on LCS's layout, in
+// Xbox names; a PlayStation pad's are translated to them (NamedPadButton). The face buttons stay where
+// the PSP had them, because A B X Y sit where Cross Circle Square Triangle do. What moves is what a
+// PSP had nowhere to put: aim and fire onto the triggers on foot, the pedals onto them in a vehicle,
+// the camera onto the right stick (into the mouse's accumulator, so everything behind it is the
+// mouse's), the looks onto the bumpers in a vehicle (both together look behind, on foot too), the
+// scope's zoom onto them while one is up, and the L button's jobs and the camera change onto the
+// stick clicks. Start opens this fork's menu; View is the game's own pause menu, the keyboard's Enter.
+//
+// EVERY BUTTON IS CLAIMED IN EVERY CONTEXT, mapped or not. PPSSPP's XInput defaults put its pause on
+// the left trigger, fast-forward on the right one and the speed toggle on the right stick click, so
+// an unclaimed one opens a menu or runs the game at triple speed in the middle of a fight. The
+// psp = 0 rows are that.
+enum class PadGate { Always, Scoped, Unscoped };
+struct PadMapping {
+	InputContext context;
+	InputKeyCode button;
+	u32 psp;
+	PadGate gate;
+	// The keyboard line it shares on the card (a kKeyMappings description), a line of its own, or
+	// null: a claim the card doesn't list.
+	const char *description;
+};
+static const PadMapping kPadMappings[] = {
+	{ kFoot, NKCODE_BUTTON_A,      CTRL_CROSS,     PadGate::Always,   "Sprint" },
+	{ kFoot, NKCODE_BUTTON_B,      CTRL_CIRCLE,    PadGate::Always,   "Attack / fire" },
+	{ kFoot, NKCODE_BUTTON_X,      CTRL_SQUARE,    PadGate::Always,   "Jump" },
+	{ kFoot, NKCODE_BUTTON_Y,      CTRL_TRIANGLE,  PadGate::Always,   "Enter vehicle / hang up" },
+	// The game's lock-on and nothing more: a stick is bad at placing a crosshair, which is why every
+	// console shooter offers the assist. Free aim is still the game's own, D-pad down while locked.
+	{ kFoot, NKCODE_BUTTON_L2,     CTRL_RTRIGGER,  PadGate::Always,   "Lock on (hold)" },
+	{ kFoot, NKCODE_BUTTON_R2,     CTRL_CIRCLE,    PadGate::Always,   "Attack / fire" },
+	{ kFoot, NKCODE_DPAD_LEFT,     CTRL_LEFT,      PadGate::Always,   "Previous weapon / previous target" },
+	{ kFoot, NKCODE_DPAD_RIGHT,    CTRL_RIGHT,     PadGate::Always,   "Next weapon / next target" },
+	{ kFoot, NKCODE_DPAD_UP,       CTRL_UP,        PadGate::Always,   "Side missions on / off" },
+	{ kFoot, NKCODE_DPAD_DOWN,     CTRL_DOWN,      PadGate::Always,   "Free aim (tap while locked on)" },
+	// The scope's zoom, the game's Square and Cross there, which are Jump and Sprint anywhere else.
+	// Without a scope one bumper does nothing, and both look behind (PadButtonMask).
+	{ kFoot, NKCODE_BUTTON_R1,     CTRL_SQUARE,    PadGate::Scoped,   "Zoom in (scope)" },
+	{ kFoot, NKCODE_BUTTON_L1,     CTRL_CROSS,     PadGate::Scoped,   "Zoom out (scope)" },
+	{ kFoot, NKCODE_BUTTON_THUMBL, CTRL_LTRIGGER,  PadGate::Always,   "Answer phone / swap for a weapon pickup" },
+	{ kFoot, NKCODE_BUTTON_THUMBR, CTRL_SELECT,    PadGate::Always,   "Change camera" },
+	{ kFoot, NKCODE_BUTTON_SELECT, CTRL_START,     PadGate::Always,   "Pause menu" },
+	{ kFoot, NKCODE_BUTTON_START,  0,              PadGate::Always,   nullptr },
+
+	// The triggers are the pedals: where the fingers rest, not throttle control - the game reads a
+	// button. A is the horn, the d-pad's down too.
+	{ kCar,  NKCODE_BUTTON_R2,     CTRL_CROSS,     PadGate::Always,   "Accelerate" },
+	{ kCar,  NKCODE_BUTTON_L2,     CTRL_SQUARE,    PadGate::Always,   "Brake / reverse" },
+	{ kCar,  NKCODE_BUTTON_A,      CTRL_DOWN,      PadGate::Always,   "Horn" },
+	{ kCar,  NKCODE_BUTTON_B,      CTRL_CIRCLE,    PadGate::Always,   "Fire (a drive-by with Q or E held)" },
+	{ kCar,  NKCODE_BUTTON_X,      CTRL_RTRIGGER,  PadGate::Always,   "Handbrake" },
+	{ kCar,  NKCODE_BUTTON_Y,      CTRL_TRIANGLE,  PadGate::Always,   "Exit vehicle / hang up" },
+	{ kCar,  NKCODE_DPAD_LEFT,     CTRL_LEFT,      PadGate::Always,   "Previous radio station" },
+	{ kCar,  NKCODE_DPAD_RIGHT,    CTRL_RIGHT,     PadGate::Always,   "Next radio station" },
+	{ kCar,  NKCODE_DPAD_UP,       CTRL_UP,        PadGate::Always,   "Side missions on / off" },
+	{ kCar,  NKCODE_DPAD_DOWN,     CTRL_DOWN,      PadGate::Always,   "Horn" },
+	// The looks: L and the stick that way, as Q and E (PadButtonMask, ApplyStick); both is behind.
+	{ kCar,  NKCODE_BUTTON_L1,     0,              PadGate::Always,   "Look left / drive-by left" },
+	{ kCar,  NKCODE_BUTTON_R1,     0,              PadGate::Always,   "Look right / drive-by right" },
+	{ kCar,  NKCODE_BUTTON_THUMBL, CTRL_LTRIGGER,  PadGate::Always,   "Answer phone" },
+	{ kCar,  NKCODE_BUTTON_THUMBR, CTRL_SELECT,    PadGate::Always,   "Change camera" },
+	{ kCar,  NKCODE_BUTTON_SELECT, CTRL_START,     PadGate::Always,   "Pause menu" },
+	{ kCar,  NKCODE_BUTTON_START,  0,              PadGate::Always,   nullptr },
+
+	// The game's own menu: its buttons, since it is the PSP's own front end and knows them. B is Back,
+	// to this fork's menu on a page this fork opened (HandlePadKey) and the game's Circle otherwise.
+	{ kMenu, NKCODE_BUTTON_A,      CTRL_CROSS,     PadGate::Always,   "Select" },
+	{ kMenu, NKCODE_BUTTON_B,      CTRL_CIRCLE,    PadGate::Always,   "Back" },
+	{ kMenu, NKCODE_BUTTON_X,      CTRL_SQUARE,    PadGate::Always,   "Place / remove marker (map)" },
+	{ kMenu, NKCODE_BUTTON_Y,      CTRL_TRIANGLE,  PadGate::Always,   nullptr },
+	{ kMenu, NKCODE_DPAD_UP,       CTRL_UP,        PadGate::Always,   nullptr },
+	{ kMenu, NKCODE_DPAD_DOWN,     CTRL_DOWN,      PadGate::Always,   nullptr },
+	{ kMenu, NKCODE_DPAD_LEFT,     CTRL_LEFT,      PadGate::Always,   nullptr },
+	{ kMenu, NKCODE_DPAD_RIGHT,    CTRL_RIGHT,     PadGate::Always,   nullptr },
+	{ kMenu, NKCODE_BUTTON_L1,     CTRL_LTRIGGER,  PadGate::Always,   "Zoom out (map)" },
+	{ kMenu, NKCODE_BUTTON_R1,     CTRL_RTRIGGER,  PadGate::Always,   "Zoom in (map)" },
+	{ kMenu, NKCODE_BUTTON_L2,     0,              PadGate::Always,   nullptr },
+	{ kMenu, NKCODE_BUTTON_R2,     0,              PadGate::Always,   nullptr },
+	{ kMenu, NKCODE_BUTTON_THUMBL, 0,              PadGate::Always,   nullptr },
+	{ kMenu, NKCODE_BUTTON_THUMBR, 0,              PadGate::Always,   nullptr },
+	{ kMenu, NKCODE_BUTTON_SELECT, CTRL_START,     PadGate::Always,   "Close the game's menu" },
+	{ kMenu, NKCODE_BUTTON_START,  0,              PadGate::Always,   nullptr },
+};
+
+// A trigger is a button past 0.45 and lets go below 0.35: one line, where a finger rests a trigger,
+// is crossed on noise alone, and the button under the right one is Fire (the VCS fork's numbers).
+static constexpr float kTriggerPress = 0.45f;
+static constexpr float kTriggerRelease = 0.35f;
+
 // One notch of the wheel is a press of one d-pad direction: weapons on foot, stations in a car.
 static constexpr int kPulseHoldTicks = 4;   // vblanks; the game samples the pad once a frame
 static constexpr int kPulseGapTicks = 2;
@@ -172,6 +266,11 @@ static float g_mouseDX = 0.0f;
 static float g_mouseDY = 0.0f;
 static int g_wheelUp = 0;
 static int g_wheelDown = 0;
+
+// The pad's buttons held (the triggers among them, as L2 / R2) and its sticks, raw: X, Y left, then
+// right, Y positive away from the player whatever the driver says (PadYSigns). Under g_mutex.
+static std::set<InputKeyCode> g_padButtons;
+static float g_padAxes[4] = {};
 
 static std::atomic<InputContext> g_context{InputContext::Unknown};
 static std::atomic<bool> g_mouseDriving{false};
@@ -257,7 +356,7 @@ static bool TranslateKeyLocked(InputContext context, InputKeyCode physical, Inpu
 
 // The scoped weapons' camera is the mouse's whenever the mouse looks at all (LCSFreeAim's ScopeLook).
 static bool MouseAimsScope(InputContext context) {
-	return context == kFoot && Settings().mouseLook && ScopeActive();
+	return context == kFoot && CameraLookOwned() && ScopeActive();
 }
 
 static bool KeyLive(const HeldKey &held, InputContext now) {
@@ -267,7 +366,15 @@ static bool KeyLive(const HeldKey &held, InputContext now) {
 	return held.context == now || (held.context != kMenu && now != kMenu);
 }
 
+// The pad's path, below with the rest of it.
+static bool HandlePadKey(const KeyInput &key);
+static KeyInput TranslatePlayStationHidButton(const KeyInput &key);
+
 bool HandleHostKey(const KeyInput &key) {
+	// A pad goes down its own path, against its own table.
+	if (IsPadDevice(key.deviceId)) {
+		return IsActive() && HandlePadKey(TranslatePlayStationHidButton(key));
+	}
 	if (key.deviceId != DEVICE_ID_KEYBOARD && key.deviceId != DEVICE_ID_MOUSE) {
 		return false;
 	}
@@ -281,8 +388,8 @@ bool HandleHostKey(const KeyInput &key) {
 		return false;
 	}
 	// Unknown whenever the layer is inactive or switched off, so this is the gate for every
-	// other game too.
-	const InputContext context = g_context.load(std::memory_order_relaxed);
+	// other game too. The keyboard's own switch is asked here: the pad scheme alone keeps a context.
+	const InputContext context = Settings().keyboardMouse ? g_context.load(std::memory_order_relaxed) : InputContext::Unknown;
 
 	std::lock_guard<std::mutex> guard(g_mutex);
 	// The intro: any key but Escape (PPSSPP's pause) and the F keys skips it, Shift included, as in
@@ -341,6 +448,217 @@ bool HandleHostKey(const KeyInput &key) {
 	return claimed;
 }
 
+// --- The pad's input path ---
+
+bool IsPadDevice(InputDeviceID device) {
+	return (device >= DEVICE_ID_PAD_0 && device <= DEVICE_ID_PAD_9) ||
+		(device >= DEVICE_ID_XINPUT_0 && device <= DEVICE_ID_XINPUT_3);
+}
+
+// Which way is up on a pad's Y axes. XInput reports a stick positive pushed away from the player;
+// DirectInput and the HID driver's DualShock and DualSense the other way. PPSSPP's mapping carries the
+// difference (An.Up is axis Y positive for XInput, negative for a generic pad), and this layer bypasses
+// the mapper, so it asks the mapping the same question; a pad nobody mapped gets PPSSPP's defaults.
+// Cached per slot: it runs at the poll rate, and the generation drops the cache on any rebind. The
+// VCS fork's PadYSigns.
+static constexpr int kPadSlots = (DEVICE_ID_XINPUT_3 - DEVICE_ID_PAD_0) + 1;
+static std::atomic<int> g_padSignGeneration{-1};
+static std::atomic<int> g_padSignLeftY[kPadSlots]{};
+static std::atomic<int> g_padSignRightY[kPadSlots]{};
+
+static void PadYSigns(InputDeviceID device, int *leftY, int *rightY) {
+	const int slot = (int)device - (int)DEVICE_ID_PAD_0;
+	if (slot < 0 || slot >= kPadSlots) {
+		*leftY = 1;
+		*rightY = 1;
+		return;
+	}
+	const int generation = KeyMap::g_controllerMapGeneration;
+	if (g_padSignGeneration.exchange(generation, std::memory_order_relaxed) != generation) {
+		for (int i = 0; i < kPadSlots; i++) {
+			g_padSignLeftY[i].store(0, std::memory_order_relaxed);
+			g_padSignRightY[i].store(0, std::memory_order_relaxed);
+		}
+	}
+	if (g_padSignLeftY[slot].load(std::memory_order_relaxed) == 0) {
+		const MappedAnalogAxes axes = KeyMap::MappedAxesForDevice(device);
+		const int fallback = device >= DEVICE_ID_XINPUT_0 ? 1 : -1;
+		g_padSignLeftY[slot].store(axes.leftY.direction ? axes.leftY.direction : fallback, std::memory_order_relaxed);
+		g_padSignRightY[slot].store(axes.rightY.direction ? axes.rightY.direction : fallback, std::memory_order_relaxed);
+	}
+	*leftY = g_padSignLeftY[slot].load(std::memory_order_relaxed);
+	*rightY = g_padSignRightY[slot].load(std::memory_order_relaxed);
+}
+
+// A radial deadzone (PPSSPP's own setting, the Controller page's row), rescaled so the first movement
+// past it is small: a square one lets a slow diagonal start as a pure sideways sweep.
+static bool PadStick(float rawX, float rawY, float *x, float *y) {
+	*x = 0.0f;
+	*y = 0.0f;
+	const float dead = std::clamp(g_Config.fAnalogDeadzone, 0.0f, 0.9f);
+	const float length = std::sqrt(rawX * rawX + rawY * rawY);
+	if (length <= dead || length <= 0.0f) {
+		return false;
+	}
+	const float scaled = std::min((length - dead) / (1.0f - dead), 1.0f);
+	*x = rawX / length * scaled;
+	*y = rawY / length * scaled;
+	return true;
+}
+
+static bool PadClaims(InputContext context, InputKeyCode button) {
+	for (const PadMapping &mapping : kPadMappings) {
+		if (mapping.context == context && mapping.button == button) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// A PlayStation pad on PPSSPP's Windows HID driver reports buttons by number. Keyed on the names that
+// driver registers, because the same numbers are other buttons on a DirectInput pad. The touchpad
+// click and the PS button are left as they come. The VCS fork's TranslatePlayStationHidButton.
+static KeyInput TranslatePlayStationHidButton(const KeyInput &key) {
+	const std::string name = KeyMap::PadName(key.deviceId);
+	if (!(name.rfind("DS4", 0) == 0 || name.rfind("DualSense", 0) == 0 || name == "PS Classic")) {
+		return key;
+	}
+	KeyInput translated = key;
+	switch (key.keyCode) {
+	case NKCODE_BUTTON_2: translated.keyCode = NKCODE_BUTTON_A; break;       // Cross
+	case NKCODE_BUTTON_1: translated.keyCode = NKCODE_BUTTON_B; break;       // Circle
+	case NKCODE_BUTTON_4: translated.keyCode = NKCODE_BUTTON_X; break;       // Square
+	case NKCODE_BUTTON_3: translated.keyCode = NKCODE_BUTTON_Y; break;       // Triangle
+	case NKCODE_BUTTON_7: translated.keyCode = NKCODE_BUTTON_L1; break;
+	case NKCODE_BUTTON_8: translated.keyCode = NKCODE_BUTTON_R1; break;
+	case NKCODE_BUTTON_9: translated.keyCode = NKCODE_BUTTON_SELECT; break;  // Create / Share
+	case NKCODE_BUTTON_10: translated.keyCode = NKCODE_BUTTON_START; break;  // Options
+	default: break;
+	}
+	return translated;
+}
+
+InputKeyCode NamedPadButton(const KeyInput &key) {
+	return IsPadDevice(key.deviceId) ? TranslatePlayStationHidButton(key).keyCode : key.keyCode;
+}
+
+static bool HandlePadKey(const KeyInput &key) {
+	if (!Settings().padScheme) {
+		return false;
+	}
+	const bool down = (key.flags & KeyInputFlags::DOWN) != 0;
+	const bool up = (key.flags & KeyInputFlags::UP) != 0;
+	if (!down && !up) {
+		return false;
+	}
+	// The intro: any button skips it, as any key does.
+	if (IntroPlaying()) {
+		if (down) {
+			RequestIntroSkip();
+		}
+		return true;
+	}
+	// Start is this fork's menu: a UI message, not a PSP button, so on the edge and before the context
+	// gate (a menu button that waits for the address table doesn't work where it is most wanted).
+	if (key.keyCode == NKCODE_BUTTON_START) {
+		if (down) {
+			System_PostUIMessage(UIMessage::REQUEST_GAME_PAUSE);
+		}
+		return true;
+	}
+	const InputContext context = g_context.load(std::memory_order_relaxed);
+	// B on a page this fork opened is Back to this fork's menu, the pad's half of the Backspace rule.
+	// Outside the lock: a UI message isn't posted with an input mutex held.
+	if (key.keyCode == NKCODE_BUTTON_B && context == kMenu && BridgeOwnsMenu()) {
+		if (down) {
+			System_PostUIMessage(UIMessage::REQUEST_GAME_PAUSE);
+		}
+		return true;
+	}
+	std::lock_guard<std::mutex> guard(g_mutex);
+	if (down) {
+		g_padButtons.insert(key.keyCode);
+	} else {
+		g_padButtons.erase(key.keyCode);
+	}
+	// Claim only what this layer acts on: with no context a pad is PPSSPP's, as before any of this.
+	return context != InputContext::Unknown && PadClaims(context, key.keyCode);
+}
+
+static void SetPadTrigger(InputKeyCode button, float value) {
+	std::lock_guard<std::mutex> guard(g_mutex);
+	const bool wasDown = g_padButtons.count(button) != 0;
+	const bool nowDown = value > (wasDown ? kTriggerRelease : kTriggerPress);
+	if (nowDown) {
+		g_padButtons.insert(button);
+	} else {
+		g_padButtons.erase(button);
+	}
+}
+
+bool HandleHostAxis(const AxisInput &axis) {
+	if (!IsActive() || !Settings().padScheme || !IsPadDevice(axis.deviceId)) {
+		return false;
+	}
+	// Recorded either way, claimed only with a context: claiming the sticks with nothing to apply them
+	// to would take them from PPSSPP's mapper and leave nobody moving.
+	const bool claim = g_context.load(std::memory_order_relaxed) != InputContext::Unknown;
+	int leftYSign = 1, rightYSign = 1;
+	PadYSigns(axis.deviceId, &leftYSign, &rightYSign);
+	switch (axis.axisId) {
+	case JOYSTICK_AXIS_X:
+	case JOYSTICK_AXIS_Y:
+	case JOYSTICK_AXIS_Z:
+	case JOYSTICK_AXIS_RZ: {
+		std::lock_guard<std::mutex> guard(g_mutex);
+		switch (axis.axisId) {
+		case JOYSTICK_AXIS_X: g_padAxes[0] = axis.value; break;
+		case JOYSTICK_AXIS_Y: g_padAxes[1] = axis.value * (float)leftYSign; break;
+		case JOYSTICK_AXIS_Z: g_padAxes[2] = axis.value; break;
+		default: g_padAxes[3] = axis.value * (float)rightYSign; break;
+		}
+		return claim;
+	}
+	// Claimed whatever happens: PPSSPP's defaults put its pause and fast-forward on these.
+	case JOYSTICK_AXIS_LTRIGGER:
+		SetPadTrigger(NKCODE_BUTTON_L2, axis.value);
+		return claim;
+	case JOYSTICK_AXIS_RTRIGGER:
+		SetPadTrigger(NKCODE_BUTTON_R2, axis.value);
+		return claim;
+	default:
+		// A pedal set, a hat, a sixth axis: not ours.
+		return false;
+	}
+}
+
+// This context's PSP buttons for the pad's held buttons. The bumpers' two composites are here: on foot
+// both look behind (L + R) unless a scope is up, and in a vehicle either is the look's L.
+static u32 PadButtonMask(InputContext context, const std::set<InputKeyCode> &held) {
+	const bool scoped = context == kFoot && ScopeActive();
+	u32 mask = 0;
+	for (InputKeyCode button : held) {
+		for (const PadMapping &mapping : kPadMappings) {
+			if (mapping.context != context || mapping.button != button) {
+				continue;
+			}
+			if ((mapping.gate == PadGate::Scoped && !scoped) || (mapping.gate == PadGate::Unscoped && scoped)) {
+				continue;
+			}
+			mask |= mapping.psp;
+		}
+	}
+	const bool lb = held.count(NKCODE_BUTTON_L1) != 0;
+	const bool rb = held.count(NKCODE_BUTTON_R1) != 0;
+	if (context == kFoot && !scoped && lb && rb) {
+		mask |= CTRL_LTRIGGER | CTRL_RTRIGGER;
+	}
+	if (context == kCar && (lb || rb)) {
+		mask |= CTRL_LTRIGGER;
+	}
+	return mask;
+}
+
 bool HandleMouseDelta(float dx, float dy) {
 	if (!g_mouseDriving.load(std::memory_order_relaxed)) {
 		return false;
@@ -371,7 +689,8 @@ static u32 PadPanelStep() {
 	return mask;
 }
 
-static void ApplyButtons(InputContext context, const std::vector<std::pair<InputKeyCode, HeldKey>> &held, int wheel) {
+static void ApplyButtons(InputContext context, const std::vector<std::pair<InputKeyCode, HeldKey>> &held,
+	const std::set<InputKeyCode> &padHeld, int wheel) {
 	u32 mask = 0;
 	// While the front-end bridge walks the game's menu, the player's keys stand down: a held W is
 	// the d-pad's up, and a press between two of the bridge's is one it didn't make.
@@ -387,6 +706,7 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 				}
 			}
 		}
+		mask |= PadButtonMask(context, padHeld);
 	}
 
 	// Right mouse on foot, the aim binding; the middle button is the same R for the game's lock-on and
@@ -457,7 +777,8 @@ static void ApplyButtons(InputContext context, const std::vector<std::pair<Input
 	g_lastMask = mask;
 }
 
-static void ApplyStick(InputContext context, const std::vector<std::pair<InputKeyCode, HeldKey>> &held) {
+static void ApplyStick(InputContext context, const std::vector<std::pair<InputKeyCode, HeldKey>> &held,
+	const std::set<InputKeyCode> &padHeld, float padX, float padY) {
 	float x = 0.0f;
 	float y = 0.0f;
 	// In the game's free aim the stick is the aim: WASD there turned the view against the mouse
@@ -495,6 +816,17 @@ static void ApplyStick(InputContext context, const std::vector<std::pair<InputKe
 			walk = true;
 		}
 	}
+	// The pad's bumpers are Q and E.
+	if (context == kCar && !bridge) {
+		if (padHeld.count(NKCODE_BUTTON_L1)) {
+			glanceX -= 1.0f;
+			glances++;
+		}
+		if (padHeld.count(NKCODE_BUTTON_R1)) {
+			glanceX += 1.0f;
+			glances++;
+		}
+	}
 	if (glances > 0) {
 		// Left and right together is behind, like C.
 		if (glanceX == 0.0f && glanceY == 0.0f) {
@@ -502,6 +834,13 @@ static void ApplyStick(InputContext context, const std::vector<std::pair<InputKe
 		}
 		x = glanceX;
 		y = glanceY;
+	}
+	// The pad's left stick when no key moves it: as it lies, past the deadzone (a walk is a small
+	// push). In the menu too, where the game's pages move with the nub. Not in free aim or the scope,
+	// where the right stick aims through the mouse's path and the left one stays centred.
+	if (x == 0.0f && y == 0.0f && glances == 0 && !freeAim && !bridge &&
+			(context == kFoot || context == kCar || context == kMenu)) {
+		PadStick(padX, padY, &x, &y);
 	}
 	if (x != 0.0f || y != 0.0f) {
 		// A diagonal is the same speed as a straight line, as on the nub.
@@ -555,7 +894,7 @@ static void ApplyMouseLook(InputContext context, float dx, float dy, bool chaseC
 	const std::optional<u16> mode = active && *active <= 2 ? ReadU16(cam + kLCSCamModeOffset) : std::nullopt;
 	const bool onFoot = context == kFoot && mode && *mode == kLCSCamModeFollowPed;
 
-	const bool takeOver = settings.mouseLook && onFoot;
+	const bool takeOver = CameraLookOwned() && onFoot;
 	if (takeOver && !g_cameraTakenOver) {
 		// Whatever yaw rate the correction built up would otherwise carry on for a few frames.
 		WriteFloat(cam + kLCSCamBetaSpeedOffset, 0.0f);
@@ -590,7 +929,7 @@ static void ApplyMouseLook(InputContext context, float dx, float dy, bool chaseC
 void InputTick(const LCSState &state) {
 	const LCSSettings &settings = Settings();
 	InputContext context = InputContext::Unknown;
-	if (settings.keyboardMouse && state.playerBase) {
+	if ((settings.keyboardMouse || settings.padScheme) && state.playerBase) {
 		if (ReadAddrBool(LCSAddr::MenuActive).value_or(false)) {
 			context = kMenu;
 		} else if (state.inVehicle.value_or(false)) {
@@ -604,10 +943,18 @@ void InputTick(const LCSState &state) {
 	const bool mouseCamera = context == kFoot || (context == kCar && ChaseCamTakesLook(kCar));
 
 	std::vector<std::pair<InputKeyCode, HeldKey>> held;
+	std::set<InputKeyCode> padHeld;
+	float padAxes[4];
 	int wheel;
 	{
 		std::lock_guard<std::mutex> guard(g_mutex);
 		held.assign(g_held.begin(), g_held.end());
+		if (settings.padScheme) {
+			padHeld = g_padButtons;
+			memcpy(padAxes, g_padAxes, sizeof(padAxes));
+		} else {
+			memset(padAxes, 0, sizeof(padAxes));
+		}
 		wheel = g_wheelUp - g_wheelDown;
 		g_wheelUp = 0;
 		g_wheelDown = 0;
@@ -633,8 +980,23 @@ void InputTick(const LCSState &state) {
 		}
 	}
 
-	ApplyButtons(context, held, wheel);
-	ApplyStick(context, held);
+	// The pad's right stick becomes mouse movement here, so the camera, free aim and the scope take it
+	// as they take the mouse. Squared, sign kept: a stick holds a speed, and a linear one wastes the
+	// slow half of its travel. Its Y is positive away from the player and a mouse's down the screen.
+	float lookX, lookY;
+	if (settings.padScheme && CameraLookOwned() && mouseCamera && PadStick(padAxes[2], padAxes[3], &lookX, &lookY)) {
+		const float dx = lookX * std::fabs(lookX) * settings.padLookSpeed;
+		float dy = -lookY * std::fabs(lookY) * settings.padLookSpeed;
+		if (settings.padInvertLookY) {
+			dy = -dy;
+		}
+		std::lock_guard<std::mutex> guard(g_mutex);
+		g_mouseDX += dx;
+		g_mouseDY += dy;
+	}
+
+	ApplyButtons(context, held, padHeld, wheel);
+	ApplyStick(context, held, padHeld, padAxes[0], padAxes[1]);
 	// Leaving the on-foot camera hands it back at once, without waiting for a frame wait.
 	if (context != kFoot && g_cameraTakenOver) {
 		SetCameraTakenOver(false);
@@ -659,13 +1021,13 @@ void InputFrameBoundary() {
 	}
 	// Free aim first: it is on foot, in mode 11, which no other look path takes.
 	const LCSSettings &s = Settings();
-	if (context == kFoot && s.freeAim && s.keyboardMouse && s.mouseLook && FreeAimLook(dx, dy)) {
+	if (context == kFoot && s.freeAim && CameraLookOwned() && FreeAimLook(dx, dy)) {
 		return;
 	}
 	// Then the scope, the other aim on foot (modes 7, 8, 34, 45, 46), with the wheel's zoom.
 	const int zoomNotches = g_scopeZoomNotches;
 	g_scopeZoomNotches = 0;
-	if (context == kFoot && s.keyboardMouse && s.mouseLook && ScopeLook(dx, dy, zoomNotches)) {
+	if (context == kFoot && CameraLookOwned() && ScopeLook(dx, dy, zoomNotches)) {
 		return;
 	}
 	if (context == kCar && ChaseCamTakesLook(kCar)) {
@@ -690,6 +1052,8 @@ void ResetInput() {
 		g_padQueue.clear();
 		g_padTicks = 0;
 		g_padHeld = 0;
+		g_padButtons.clear();
+		memset(g_padAxes, 0, sizeof(g_padAxes));
 	}
 	g_context.store(InputContext::Unknown, std::memory_order_relaxed);
 	g_mouseDriving.store(false, std::memory_order_relaxed);
@@ -951,6 +1315,58 @@ void SaveKeyBindings(Section *section) {
 	}
 }
 
+// What the card calls a pad's button: what the pad has printed beside it. The PlayStation column
+// spells the face buttons out (the shapes are glyphs this font hasn't), and names Create and Share
+// both, one button across two generations. The VCS fork's PadButtonName.
+static std::string PadButtonName(InputKeyCode button, bool playStation) {
+	if (playStation) {
+		switch (button) {
+		case NKCODE_BUTTON_A: return "CROSS";
+		case NKCODE_BUTTON_B: return "CIRCLE";
+		case NKCODE_BUTTON_X: return "SQUARE";
+		case NKCODE_BUTTON_Y: return "TRIANGLE";
+		case NKCODE_BUTTON_L1: return "L1";
+		case NKCODE_BUTTON_R1: return "R1";
+		case NKCODE_BUTTON_L2: return "L2";
+		case NKCODE_BUTTON_R2: return "R2";
+		case NKCODE_BUTTON_THUMBL: return "L3";
+		case NKCODE_BUTTON_THUMBR: return "R3";
+		case NKCODE_BUTTON_START: return "OPTIONS";
+		case NKCODE_BUTTON_SELECT: return "CREATE / SHARE";
+		default: break;
+		}
+	}
+	switch (button) {
+	case NKCODE_BUTTON_A: return "A";
+	case NKCODE_BUTTON_B: return "B";
+	case NKCODE_BUTTON_X: return "X";
+	case NKCODE_BUTTON_Y: return "Y";
+	case NKCODE_BUTTON_L1: return "LB";
+	case NKCODE_BUTTON_R1: return "RB";
+	case NKCODE_BUTTON_L2: return "LT";
+	case NKCODE_BUTTON_R2: return "RT";
+	case NKCODE_BUTTON_THUMBL: return "LEFT STICK CLICK";
+	case NKCODE_BUTTON_THUMBR: return "RIGHT STICK CLICK";
+	case NKCODE_DPAD_UP: return "D-PAD UP";
+	case NKCODE_DPAD_DOWN: return "D-PAD DOWN";
+	case NKCODE_DPAD_LEFT: return "D-PAD LEFT";
+	case NKCODE_DPAD_RIGHT: return "D-PAD RIGHT";
+	case NKCODE_BUTTON_START: return "START";
+	case NKCODE_BUTTON_SELECT: return "VIEW";
+	default: return "?";
+	}
+}
+
+static void AddPadCell(std::string *cell, const std::string &name) {
+	if (cell->find(name) != std::string::npos) {
+		return;
+	}
+	if (!cell->empty()) {
+		*cell += " / ";
+	}
+	*cell += name;
+}
+
 std::vector<KeyListingRow> KeyListing(InputContext context) {
 	std::vector<KeyListingRow> rows;
 	std::lock_guard<std::mutex> guard(g_mutex);
@@ -1011,6 +1427,40 @@ std::vector<KeyListingRow> KeyListing(InputContext context) {
 			}
 		}
 	}
+	// The pad's column, from kPadMappings: each row onto the keyboard line of the same action, or a line
+	// of its own (the scope's zoom), and the controls that are not a row of the table by hand.
+	auto padCells = [](KeyListingRow &row, const char *xbox, const char *playStation) {
+		AddPadCell(&row.xbox, xbox);
+		AddPadCell(&row.playstation, playStation);
+	};
+	for (const PadMapping &m : kPadMappings) {
+		if (m.context != context || !m.description) {
+			continue;
+		}
+		auto it = std::find_if(rows.begin(), rows.end(), [&](const KeyListingRow &row) {
+			return row.action == m.description;
+		});
+		if (it == rows.end()) {
+			rows.push_back({ m.description, {}, m.psp ? CardPspName(m.psp) : "" });
+			it = rows.end() - 1;
+		}
+		AddPadCell(&it->xbox, PadButtonName(m.button, false));
+		AddPadCell(&it->playstation, PadButtonName(m.button, true));
+	}
+	for (KeyListingRow &row : rows) {
+		if (row.action == "Walk" || row.action == "Steer" || row.action == "Lean / aim the water cannon") {
+			padCells(row, "LEFT STICK", "LEFT STICK");
+		} else if (row.action == "Look" || row.action == "Look around") {
+			padCells(row, "RIGHT STICK", "RIGHT STICK");
+		} else if (row.action == "Look behind") {
+			padCells(row, "LB + RB", "L1 + R1");
+		} else if (row.action == "Move") {
+			padCells(row, "D-PAD / LEFT STICK", "D-PAD / LEFT STICK");
+		}
+	}
+	// This fork's menu, which no table row presses.
+	rows.push_back({ "This menu", { "ESC" }, "" });
+	padCells(rows.back(), "START", "OPTIONS");
 	return rows;
 }
 
