@@ -259,7 +259,8 @@ def build(out_dir, make_zip):
     files = [f for f in out_dir.rglob("*") if f.is_file()]
     print(f"staged {len(files)} files, {sum(f.stat().st_size for f in files) / (1 << 20):.1f} MB -> {out_dir}")
     if make_zip:
-        archive = out_dir.with_suffix(".zip")
+        # Beside the folder, the whole name kept: with_suffix would take ".PC" for an extension.
+        archive = out_dir.parent / (out_dir.name + ".zip")
         if archive.exists():
             archive.unlink()
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
