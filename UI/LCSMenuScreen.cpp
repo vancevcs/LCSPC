@@ -243,6 +243,52 @@ static void DrawTexture(UIContext &dc, Draw::Texture *tex, const Bounds &bounds,
 	dc.RebindTexture();
 }
 
+// --- Links ---
+
+// Where the project lives: two icons in the root page's bottom-left corner (the VCS fork's). An
+// empty URL is not drawn.
+static const char *const kLCSGitHubUrl = "https://github.com/vancevcs/LCSPC";
+static const char *const kLCSDiscordUrl = "https://discord.gg/SCcnMRaggm";
+static constexpr float kLinkIconSize = 44.0f;
+
+// An icon that opens a web page. Not a row, and not focusable, so the arrow keys never wander into
+// it. The art is white (assets/lcs/link_*.png), tinted the rows' colours.
+class LCSMenuLink : public UI::Clickable {
+public:
+	LCSMenuLink(LCSMenuArt *art, const char *path, const char *url, UI::LayoutParams *layoutParams)
+		: UI::Clickable(layoutParams), art_(art), path_(path), url_(url) {
+		OnClick.Add([this](UI::EventParams &) {
+			System_LaunchUrl(LaunchUrlType::BROWSER_URL, url_);
+		});
+	}
+
+	void Draw(UIContext &dc) override {
+		Draw::Texture *tex = art_ ? art_->Image(dc, path_) : nullptr;
+		if (!tex) {
+			return;
+		}
+		const float shadow = 2.0f;
+		DrawTexture(dc, tex, Bounds(bounds_.x + shadow, bounds_.y + shadow, bounds_.w, bounds_.h), 0x80000000);
+		DrawTexture(dc, tex, bounds_, hovered_ || down_ ? kItemSelectedColor : kItemColor);
+	}
+	void GetContentDimensions(const UIContext &dc, float &w, float &h) const override {
+		w = h = kLinkIconSize;
+	}
+	bool Touch(const TouchInput &input) override {
+		if (input.flags & TouchInputFlags::MOVE) {
+			hovered_ = bounds_.Contains(input.x, input.y);
+		}
+		return UI::Clickable::Touch(input);
+	}
+	bool CanBeFocused() const override { return false; }
+
+private:
+	LCSMenuArt *art_;
+	const char *path_;
+	const char *url_;
+	bool hovered_ = false;
+};
+
 // --- Sounds ---
 
 // Straight into the effect mixer, not UI::PlayUISound: that is gated on g_Config.bUISound, which
@@ -1193,6 +1239,20 @@ void LCSMenuScreen::CreateViews() {
 
 	switch (page_) {
 	case LCSMenuPage::Root:
+		// The project's links, bottom-left above the bar. Root only: elsewhere they'd be in the way.
+		{
+			float left = kTitleLeft;
+			for (const auto &link : { std::make_pair("lcs/link_discord.png", kLCSDiscordUrl),
+					std::make_pair("lcs/link_github.png", kLCSGitHubUrl) }) {
+				if (!*link.second) {
+					continue;
+				}
+				root_->Add(new LCSMenuLink(art_.get(), link.first, link.second,
+					new AnchorLayoutParams(kLinkIconSize, kLinkIconSize, left, NONE, NONE,
+						kBottomBarHeight + kLinkIconSize * 0.5f)));
+				left += kLinkIconSize * 1.6f;
+			}
+		}
 		AddRow(list, "RESUME")->OnClick.Handle(this, &LCSMenuScreen::OnResume);
 		AddPageRow(list, "START NEW GAME", LCSMenuPage::Game);
 		AddGamePageRow(list, "MAP", "The city map, with your position and the places you have found.", LCS::GamePage::Map);
