@@ -61,6 +61,7 @@
 #include "Core/HLE/sceUtility.h"
 #include "Core/HW/Display.h"
 #include "Core/Config.h"
+#include "Core/LCS/LCSGame.h"  // Fork-specific: PresentAsGame
 #include "Core/Core.h"
 #include "Core/Util/PathUtil.h"
 #include "Core/Util/PSARUnpack.h"
@@ -458,7 +459,8 @@ static bool CPU_Init(FileLoader *fileLoader, IdentifiedFileType type, std::strin
 	}
 
 	const std::string id = g_paramSFO.GetValueString("DISC_ID");
-	const std::string windowTitle = id.empty() ? gameTitle : id + " : " + gameTitle;
+	// Fork-specific: the LCS game build's title is the game's name alone.
+	const std::string windowTitle = (id.empty() || LCS::PresentAsGame()) ? gameTitle : id + " : " + gameTitle;
 	INFO_LOG(Log::Loader, "%s", windowTitle.c_str());
 	System_SetWindowTitle(windowTitle);
 
@@ -500,7 +502,7 @@ static bool CPU_Init(FileLoader *fileLoader, IdentifiedFileType type, std::strin
 	g_fileLoggingWasEnabled = g_logManager.GetOutputsEnabled() & LogOutput::File;
 	g_logManager.EnableOutput(LogOutput::File, g_Config.bEnableFileLogging || g_fileLoggingWasEnabled);
 
-	if ((g_logManager.GetOutputsEnabled() & LogOutput::File) && !g_logManager.GetLogFilePath().empty()) {
+	if ((g_logManager.GetOutputsEnabled() & LogOutput::File) && !g_logManager.GetLogFilePath().empty() && !LCS::PresentAsGame()) {  // Fork-specific
 		auto dev = GetI18NCategory(I18NCat::DEVELOPER);
 
 		Path logPath = g_logManager.GetLogFilePath();

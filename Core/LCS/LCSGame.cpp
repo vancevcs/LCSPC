@@ -262,6 +262,15 @@ bool IsActive() {
 	return g_active;
 }
 
+bool PresentAsGame() {
+#ifdef _DEBUG
+	return false;
+#else
+	static const bool game = !File::Exists(File::GetExeDirectory() / "workshop.txt");
+	return game;
+#endif
+}
+
 const std::string &GetDiscID() {
 	return g_discID;
 }

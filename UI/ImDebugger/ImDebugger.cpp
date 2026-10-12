@@ -71,6 +71,7 @@
 #include "UI/AudioCommon.h"
 #include "UI/GameInfoCache.h"
 #include "UI/PauseScreen.h"
+#include "Core/LCS/LCSGame.h"  // Fork-specific: PresentAsGame
 
 extern bool g_TakeScreenshot;
 static ImVec4 g_normalTextColor;
@@ -2493,7 +2494,9 @@ void ImDebugger::Frame(MIPSDebugInterface *mipsDebug, GPUCommon *gpuDebug, Draw:
 	// Snapshot the coreState to avoid inconsistency.
 	const CoreState coreState = ::coreState;
 
-	const bool showDebugger = g_Config.bShowImDebugger && PSP_IsInited();  // This will be separated from showing the IM UI in general.
+	// Fork-specific: never in the LCS game build, refused at the draw (the flag is saved, and a config
+	// saved with it open would bring it back over the game).
+	const bool showDebugger = g_Config.bShowImDebugger && PSP_IsInited() && !LCS::PresentAsGame();  // This will be separated from showing the IM UI in general.
 	const bool allowSaveStates = !Achievements::HardcoreModeActive() && PSP_IsInited() && (!IsNetworkConnected() || g_Config.bAllowSavestateWhileConnected);
 
 	if (Achievements::HardcoreModeActive()) {

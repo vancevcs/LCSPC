@@ -240,6 +240,34 @@ private:
 	std::unique_ptr<struct LCSMenuArt> art_;
 };
 
+// The game build's first screen when there is no disc of this build's to boot: what was found and why
+// it isn't the one, CHOOSE DISC and QUIT, in the menu's own look. Looks again whenever the app comes to
+// the front, and boots a disc that has appeared beside the game.
+class LCSNoDiscScreen : public UIScreen {
+public:
+	explicit LCSNoDiscScreen(std::string finding);
+	~LCSNoDiscScreen();
+	const char *tag() const override { return "LCSNoDisc"; }
+	void sendMessage(UIMessage message, const char *value) override;
+	void deviceLost() override;
+	void deviceRestored(Draw::DrawContext *draw) override;
+
+protected:
+	void CreateViews() override;
+	void DrawBackground(UIContext &dc) override;
+
+private:
+	void Boot(const Path &path);
+	std::string finding_;
+	LCSMenuItem *choose_ = nullptr;
+	std::unique_ptr<struct LCSMenuArt> art_;
+};
+
+// The game build's start (LCS::PresentAsGame), in place of PPSSPP's logo and game list: the disc given
+// on the command line, else the one booted last (lcs.ini GamePath), else one beside the game - each
+// only if it is this build's disc, ULUS10041 version 3.00 - or LCSNoDiscScreen saying what it found.
+UIScreen *CreateStartScreen(const Path &bootFile);
+
 // The pause screen for whatever is running: this menu over LCS, PPSSPP's own otherwise. Called
 // from EmuScreen's pause sites. Null when the LCS front end took the pause itself: closing the
 // game's own menu, or ignoring it while a sequence walks that menu.

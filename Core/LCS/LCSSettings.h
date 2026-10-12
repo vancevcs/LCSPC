@@ -108,6 +108,11 @@ LCSSettings &Settings();
 bool CameraLookOwned();
 void LoadSettings();
 void SaveSettings();
+// The disc the game last booted (lcs.ini GamePath), so the game build opens straight onto it; empty
+// before the first boot. Read and written on their own, without LoadSettings: the start screen asks
+// before anything has booted. Any thread.
+std::string GamePath();
+void SetGamePath(const std::string &path);
 // lcs.ini's WorldMemory, read straight from the file: the partition is sized while the ISO loads,
 // before the layer activates or loads its settings.
 bool WantsExtraWorldMemory();

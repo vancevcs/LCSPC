@@ -1,0 +1,3 @@
+This file makes the exe beside it the workshop build: PPSSPP's menu bar, the ImGui debugger,
+the log file and the game list stay, as in a Debug build (LCS::PresentAsGame). The packaged release
+has no such file beside its exe, so it presents as the game. Delete it to see the release here.

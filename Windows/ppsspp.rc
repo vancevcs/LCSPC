@@ -121,15 +121,15 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "Comments", "PPSSPP PSP emulator"
+            VALUE "Comments", "Grand Theft Auto: Liberty City Stories for PC. Built on PPSSPP."
             VALUE "CompanyName", "Henrik Rydgård"
-            VALUE "FileDescription", "PPSSPP"
+            VALUE "FileDescription", "GTA Liberty City Stories"
             VALUE "FileVersion", PPSSPP_WIN_VERSION_STRING
-            VALUE "InternalName", "PPSSPPEmu"
+            VALUE "InternalName", "GTALCS"
             VALUE "LegalCopyright", "Copyright © 2006-2021 by Henrik Rydgård"
             VALUE "LegalTrademarks", "All product names are trademarks of their respective owners."
-            VALUE "OriginalFilename", "PPSSPP.exe"
-            VALUE "ProductName", "PPSSPP"
+            VALUE "OriginalFilename", "GTA Liberty City Stories.exe"
+            VALUE "ProductName", "GTA Liberty City Stories"
             VALUE "ProductVersion", PPSSPP_WIN_VERSION_STRING
         END
     END
@@ -488,7 +488,9 @@ END
 #ifdef GOLD
 IDI_PPSSPP              ICON                    "ppsspp_gold.ico"
 #else
-IDI_PPSSPP              ICON                    "ppsspp.ico"
+// Fork-specific: a dedicated LCS front end wears the game's icon (lcs.ico, from the game's logo).
+// ppsspp.ico stays in the tree. Unconditional: the resource compiler gets neither _DEBUG nor NDEBUG.
+IDI_PPSSPP              ICON                    "lcs.ico"
 #endif
 IDI_STOP                ICON                    "icon1.ico"
 IDI_STOPDISABLE         ICON                    "stop1.ico"

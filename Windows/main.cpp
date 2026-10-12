@@ -49,6 +49,7 @@
 #include "Common/TimeUtil.h"
 
 #include "Core/Config.h"
+#include "Core/LCS/LCSGame.h"  // Fork-specific: PresentAsGame
 #include "Core/ConfigValues.h"
 #include "Core/CmdLine.h"
 #include "Core/SaveState.h"
@@ -685,6 +686,10 @@ bool System_MakeRequest(SystemRequestType type, int requestId, const std::string
 #ifdef _DEBUG
 		winTitle.append(L" (debug)");
 #endif
+		// Fork-specific: the LCS game build's window is the game's (param1 is the disc's own title).
+		if (LCS::PresentAsGame()) {
+			winTitle = ConvertUTF8ToWString(param1.empty() ? "Grand Theft Auto: Liberty City Stories" : param1);
+		}
 		MainWindow::SetWindowTitle(winTitle.c_str());
 		return true;
 	}

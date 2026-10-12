@@ -78,6 +78,13 @@
 #include "GPU/GPUCommon.h"
 #include "UI/PauseScreen.h"
 #include "Core/LCS/LCSInput.h"  // Fork-specific
+#include "Core/LCS/LCSGame.h"  // Fork-specific
+
+// Fork-specific: the LCS game build has no menu bar (gated here, not by forcing bShowMenuBar, which is
+// saved and shared with the workshop build).
+static bool ShowMenuBar() {
+	return g_Config.bShowMenuBar && !LCS::PresentAsGame();
+}
 
 #define MOUSEEVENTF_FROMTOUCH_NOPEN 0xFF515780 //http://msdn.microsoft.com/en-us/library/windows/desktop/ms703320(v=vs.85).aspx
 #define MOUSEEVENTF_MASK_PLUS_PENTOUCH 0xFFFFFF80
@@ -197,7 +204,7 @@ namespace MainWindow {
 		wcex.hInstance = hInstance;
 		wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 		wcex.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);  // or NULL?
-		wcex.lpszMenuName = g_Config.bShowMenuBar ? (LPCWSTR)IDR_MENU1 : NULL;
+		wcex.lpszMenuName = ShowMenuBar() ? (LPCWSTR)IDR_MENU1 : NULL;
 		wcex.lpszClassName = szWindowClass;
 		wcex.hIcon = LoadIcon(hInstance, (LPCTSTR)IDI_PPSSPP);
 		wcex.hIconSm = (HICON)LoadImage(hInstance, (LPCTSTR)IDI_PPSSPP, IMAGE_ICON, 16, 16, LR_SHARED);
@@ -374,7 +381,7 @@ namespace MainWindow {
 
 			// Transitioning to Windowed
 			SetWindowLong(hWnd, GWL_STYLE, (prevStyle & ~WS_POPUP) | WS_OVERLAPPEDWINDOW);
-			if (g_Config.bShowMenuBar) {
+			if (ShowMenuBar()) {
 				SetMenu(hWnd, g_hMenu);
 			}
 
@@ -530,7 +537,7 @@ namespace MainWindow {
 		DwmSetWindowAttribute(hwndMain, DWMWA_WINDOW_CORNER_PREFERENCE, &pref, sizeof(pref));
 		ApplyFullscreenState(hwndMain, g_Config.bFullScreen);
 
-		if (!g_Config.bShowMenuBar) {
+		if (!ShowMenuBar()) {
 			SetMenu(hwndMain, NULL);
 		} else {
 			MainMenuInit(hwndMain, g_hMenu);
@@ -918,7 +925,7 @@ namespace MainWindow {
 						// and recalculate window decorations without actually changing the size of the window).
 						if (pos->cx != monWidth || pos->cy != monHeight) {
 							g_Config.bFullScreen = false;
-							if (GetMenu(hWnd) == NULL && g_Config.bShowMenuBar) {
+							if (GetMenu(hWnd) == NULL && ShowMenuBar()) {
 								SetMenu(hWnd, g_hMenu);
 							}
 							const DWORD style = GetWindowLong(hWnd, GWL_STYLE);

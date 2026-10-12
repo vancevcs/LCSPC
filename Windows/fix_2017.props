@@ -6,6 +6,23 @@
 	<WindowsTargetPlatformVersion Condition="'$(WindowsTargetPlatformVersion)' == '10.0'">$(LatestTargetPlatformVersion)</WindowsTargetPlatformVersion>
 	<TargetPlatformVersion>$(WindowsTargetPlatformVersion)</TargetPlatformVersion>
 	</PropertyGroup>
-	<ItemDefinitionGroup />
+	<!-- Fork-specific: __FILE__ relative to the checkout, so a published exe doesn't carry the path of the
+	     folder it was built in (the VCS fork's). /d1trimfile is undocumented but long-standing; an older
+	     compiler ignores it with D9002. UI and PPSSPP set their compile options to
+	     EXTERNAL_COMPILE_OPTIONS outright, so it goes there too. -->
+	<PropertyGroup>
+		<LCSSourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</LCSSourceRoot>
+		<EXTERNAL_COMPILE_OPTIONS>/d1trimfile:$(LCSSourceRoot) $(EXTERNAL_COMPILE_OPTIONS)</EXTERNAL_COMPILE_OPTIONS>
+	</PropertyGroup>
+	<!-- The linker writes the .pdb's full path into the exe as well: /PDBALTPATH:%_PDB% records the file
+	     name alone (%25 is MSBuild's escape for a literal %). -->
+	<ItemDefinitionGroup>
+		<ClCompile>
+			<AdditionalOptions>/d1trimfile:$(LCSSourceRoot) %(AdditionalOptions)</AdditionalOptions>
+		</ClCompile>
+		<Link>
+			<AdditionalOptions>/PDBALTPATH:%25_PDB%25 %(AdditionalOptions)</AdditionalOptions>
+		</Link>
+	</ItemDefinitionGroup>
   <ItemGroup />
 </Project>

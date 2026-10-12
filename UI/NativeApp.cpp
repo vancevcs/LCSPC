@@ -104,6 +104,8 @@
 #include "Core/ControlMapper.h"
 #include "Core/LCS/LCSFrontEnd.h"
 #include "Core/LCS/LCSInput.h"
+#include "Core/LCS/LCSGame.h"  // Fork-specific: PresentAsGame
+#include "UI/LCSMenuScreen.h"  // Fork-specific: CreateStartScreen
 #include "UI/LCSDevInput.h"
 #include "Core/Config.h"
 #include "Core/ConfigValues.h"
@@ -224,7 +226,7 @@ class GlobalListener : public ControlListener {
 	virtual void OnVKey(VirtKey vkey, bool down) {
 		switch (vkey) {
 		case VIRTKEY_TOGGLE_DEBUGGER:
-			if (down) {
+			if (down && !LCS::PresentAsGame()) {  // Fork-specific: no debugger in the LCS game build
 				g_Config.bShowImDebugger = !g_Config.bShowImDebugger;
 			}
 			break;
@@ -830,6 +832,9 @@ void NativeInit(int argc, const char *argv[], const CommandLineOptions &cmdLineO
 			g_screenManager->switchScreen(new MainScreen());
 			g_screenManager->push(new DeveloperToolsScreen(Path()));
 		}
+	} else if (LCS::PresentAsGame()) {
+		// Fork-specific: the LCS game build opens on the game's disc (checked), with no PPSSPP logo.
+		g_screenManager->switchScreen(CreateStartScreen(boot_filename));
 	} else if (skipLogo && !boot_filename.empty()) {
 		INFO_LOG(Log::System, "Launching EmuScreen with boot filename '%s'", boot_filename.c_str());
 		g_screenManager->switchScreen(new EmuScreen(boot_filename));

@@ -24,6 +24,8 @@ entries.
   remote; don't add one or push without asking.
 
 ## Build and run
+- `workshop.txt` beside the exe keeps the Release build the workshop (logo, game list, menu bar, ImGui,
+  log file); without it the exe presents as the game (docs/lcs/release.md). Don't delete it from the root.
 - `MSBuild Windows/PPSSPP.sln /t:PPSSPPWindows /p:Configuration=Release /p:Platform=x64 /m`
   (MSBuild via vswhere - AGENTS.md "Build and validation"). Exes land in the repo root. Check the
   exe's timestamp before trusting a measurement.
@@ -64,6 +66,7 @@ Tools/lcswad.py, lcshd.py   the Android OBB (container, PVR) and the HD texture 
 Tools/lcstxd.py       texture tool ported from VCS (+ lcsrw, lcsmatch): PC packs + OBB, auto-assign
 Tools/lcstxdweb.py    the OBB's HD textures in the browser pane, manual binds
 Tools/lcsgxtkeys.py   the help text's control tokens rewritten to key names (memstick/PSP/LCS/ENGLISH.GXT)
+Tools/lcspackage.py   the release folder and zip (docs/lcs/release.md)
 
 Seams: init/shutdown in `__KernelInit`/`__KernelShutdown`; fingerprint in `__KernelLoadELFFromPtr`;
 tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys, mouse and pad in `NativeKey` /
@@ -108,4 +111,5 @@ table: docs/lcs/architecture.md.
 | docs/lcs/anti-aliasing.md | SMAA, where it runs, the world drawn in pieces, the debug views | touching LCSSmaa or the draw engine seam |
 | docs/lcs/front-end.md | the pause menu, the game's own pages, load / new game / auto-save, the curtain, the game's settings | touching the menu, a setting, or anything that drives the game's menu |
 | docs/lcs/gps.md | the GPS route: ThePaths, switched-off roads, the blips and pools, the radar's transform, measurements | touching the route, the radar or the blips |
+| docs/lcs/release.md | the game build (PresentAsGame, workshop.txt), the start screen and its disc check, the package | touching anything the release shows, or packaging |
 | docs/lcs/hd-textures.md | the Android OBB format, matching dumps to HD art, the brightness match, DDS | touching the texture pack or the Android files |

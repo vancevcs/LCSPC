@@ -152,3 +152,6 @@ RAPrefs_PPSSPP.cfg
 cmake-build-*/
 
 /.vscode/
+
+# Fork-specific: the LCS release package (Tools/lcspackage.py)
+/dist/

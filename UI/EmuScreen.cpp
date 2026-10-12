@@ -82,6 +82,8 @@ using namespace std::placeholders;
 #include "UI/GamepadEmu.h"
 #include "UI/PauseScreen.h"
 #include "UI/LCSMenuScreen.h"  // Fork-specific: CreatePauseScreen, the LCS overlay
+#include "Core/LCS/LCSGame.h"  // Fork-specific
+#include "Core/LCS/LCSSettings.h"  // Fork-specific: SetGamePath
 #include "UI/LoadStateConfirmScreen.h"
 #include "UI/MainScreen.h"
 #include "UI/Background.h"
@@ -268,7 +270,7 @@ void EmuScreen::ProcessGameBoot(const Path &filename) {
 		break;
 	}
 
-	if (!g_Config.bShaderCache) {
+	if (!g_Config.bShaderCache && !LCS::PresentAsGame()) {  // Fork-specific
 		// Only developers should ever see this.
 		g_OSD.Show(OSDType::MESSAGE_WARNING, "Shader cache is disabled (developer)");
 	}
@@ -344,6 +346,10 @@ void EmuScreen::ProcessGameBoot(const Path &filename) {
 
 // Only call this on successful boot.
 void EmuScreen::bootComplete() {
+	// Fork-specific: the LCS disc is remembered, so the game build opens straight onto it next time.
+	if (LCS::IsActive()) {
+		LCS::SetGamePath(File::ResolvePath(gamePath_.ToString()));
+	}
 	__DisplayListenFlip([](void *userdata) {
 		EmuScreen *scr = (EmuScreen *)userdata;
 		scr->HandleFlip();

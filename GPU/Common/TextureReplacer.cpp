@@ -38,6 +38,7 @@
 #include "Common/Thread/ThreadManager.h"
 #include "Common/TimeUtil.h"
 #include "Core/Config.h"
+#include "Core/LCS/LCSGame.h"  // Fork-specific: PresentAsGame
 #include "Core/System.h"
 #include "Core/ELF/ParamSFO.h"
 #include "GPU/Common/TextureReplacer.h"
@@ -243,7 +244,7 @@ bool TextureReplacer::LoadIni(std::string *error, bool notify) {
 	}
 
 	auto gr = GetI18NCategory(I18NCat::GRAPHICS);
-	if (replaceEnabled_ && notify) {
+	if (replaceEnabled_ && notify && !LCS::PresentAsGame()) {  // Fork-specific: no pack notice in the LCS game build
 		g_OSD.Show(OSDType::MESSAGE_SUCCESS, gr->T("Texture replacement pack activated"), 3.0f);
 	}
 

@@ -41,6 +41,12 @@
 #include "Core/Config.h"
 #include "Core/ConfigValues.h"
 #include "Core/ELF/ParamSFO.h"
+#include "Core/FileSystems/BlockDevices.h"
+#include "Core/FileSystems/FileSystem.h"
+#include "Core/FileSystems/ISOFileSystem.h"
+#include "Core/Loaders.h"
+#include "Common/File/DirListing.h"
+#include "UI/EmuScreen.h"
 #include "Core/System.h"
 #include "GPU/Common/PresentationCommon.h"
 #include "Core/LCS/LCSAddresses.h"
@@ -911,7 +917,7 @@ bool LCSMenuScreen::key(const KeyInput &key) {
 	if ((key.flags & KeyInputFlags::DOWN) && !(key.flags & KeyInputFlags::IS_REPEAT)) {
 		// PPSSPP's own pause screen (savestates, its settings), for working on the fork. The root
 		// page's bar says so.
-		if (key.keyCode == NKCODE_F1 && page_ == LCSMenuPage::Root) {
+		if (key.keyCode == NKCODE_F1 && page_ == LCSMenuPage::Root && !LCS::PresentAsGame()) {
 			pendingEmulatorMenu_ = true;
 			return true;
 		}
@@ -1304,7 +1310,8 @@ void LCSMenuScreen::update() {
 	if (pendingExit_) {
 		pendingExit_ = false;
 		// What PPSSPP's own pause screen does with Exit: the app, or back to the game list.
-		if (g_Config.bPauseMenuExitsEmulator) {
+		// The game build has no game list to go back to: QUIT GAME quits.
+		if (g_Config.bPauseMenuExitsEmulator || LCS::PresentAsGame()) {
 			System_ExitApp();
 		} else {
 			TriggerFinish(DR_OK);
@@ -1434,7 +1441,7 @@ void LCSMenuScreen::DrawBackground(UIContext &dc) {
 
 	const char *hint = "ENTER / LMB - SELECT     ESC - BACK";
 	if (page_ == LCSMenuPage::Root) {
-		hint = "ENTER / LMB - SELECT     ESC - RESUME     F1 - PPSSPP MENU";
+		hint = LCS::PresentAsGame() ? "ENTER / LMB - SELECT     ESC - RESUME" : "ENTER / LMB - SELECT     ESC - RESUME     F1 - PPSSPP MENU";
 	} else if (captureLine_ >= 0) {
 		hint = "ESC - CANCEL";
 	} else if (IsKeyListPage(page_)) {
@@ -1463,6 +1470,213 @@ void LCSMenuScreen::OnExitGame(UI::EventParams &e) {
 
 void LCSMenuScreen::OnRestoreDefaults(UI::EventParams &e) {
 	LCS::ResetPage(ToOptionPage(page_));
+}
+
+// --- The start of the game build ---
+//
+// The VCS fork's start (its boot-and-saves.md, "The main menu at launch", and the no-disc screen),
+// with the disc checked first: this build plays ULUS10041 version 3.00 and nothing else, because
+// every address it changes is that disc's. So a disc's PARAM.SFO is read before anything boots it,
+// and one that isn't that says what it is instead of booting into a game this build can't change.
+// The EBOOT's own hash is checked again as it loads (LCS::NoteBootExecutable).
+
+struct LCSDiscCheck {
+	bool ok = false;
+	// What it is, for the screen: "ULES00151 version 1.05", or why it couldn't be read.
+	std::string what;
+};
+
+static LCSDiscCheck CheckDisc(const Path &path) {
+	LCSDiscCheck check;
+	std::unique_ptr<FileLoader> loader(ConstructFileLoader(path));
+	if (!loader || !loader->Exists()) {
+		check.what = "can't be read";
+		return check;
+	}
+	std::string error;
+	const IdentifiedFileType type = Identify_File(loader.get(), &error);
+	if (type == IdentifiedFileType::ARCHIVE_ZIP || type == IdentifiedFileType::ARCHIVE_7Z ||
+			type == IdentifiedFileType::ARCHIVE_RAR) {
+		check.what = "is an archive, and the game can't read one: extract the .iso inside it into this folder";
+		return check;
+	}
+	if (type != IdentifiedFileType::PSP_ISO && type != IdentifiedFileType::PSP_ISO_NP) {
+		check.what = "isn't a PSP disc image";
+		return check;
+	}
+	std::shared_ptr<BlockDevice> device(ConstructBlockDevice(loader.get(), &error));
+	if (!device) {
+		check.what = "can't be read (" + error + ")";
+		return check;
+	}
+	SequentialHandleAllocator handles;
+	ISOFileSystem umd(&handles, device);
+	const std::string sfoPath = "/PSP_GAME/PARAM.SFO";
+	const PSPFileInfo info = umd.GetFileInfo(sfoPath);
+	if (!info.exists || info.size <= 0 || info.size > 64 * 1024) {
+		check.what = "has no PSP game on it";
+		return check;
+	}
+	std::vector<u8> sfoData((size_t)info.size);
+	const int handle = umd.OpenFile(sfoPath, FILEACCESS_READ);
+	if (handle < 0) {
+		check.what = "can't be read";
+		return check;
+	}
+	const size_t read = umd.ReadFile(handle, sfoData.data(), info.size);
+	umd.CloseFile(handle);
+	ParamSFOData sfo;
+	if (read != (size_t)info.size || !sfo.ReadSFO(sfoData)) {
+		check.what = "can't be read";
+		return check;
+	}
+	const std::string id = sfo.GetValueString("DISC_ID");
+	const std::string version = sfo.GetValueString("DISC_VERSION");
+	check.ok = id == LCS::kLCSDiscID && version == LCS::kLCSDiscVersion;
+	check.what = id + " version " + version;
+	NOTICE_LOG(Log::System, "LCS start: %s is %s%s", path.ToVisualString().c_str(), check.what.c_str(), check.ok ? "" : " - not this build's");
+	return check;
+}
+
+static std::string WrongDiscText(const std::string &name, const LCSDiscCheck &check) {
+	if (check.what.find(" version ") != std::string::npos) {
+		return name + " is " + check.what + ". This build plays only the USA disc, ULUS10041 version 3.00: "
+			"every address it changes in the game is that disc's.";
+	}
+	return name + " " + check.what + ".";
+}
+
+// A disc of this build's beside the game, or nothing. *finding says what else was there, for the screen.
+static Path DiscBesideGame(std::string *finding) {
+	std::vector<File::FileInfo> files;
+	File::GetFilesInDir(File::GetExeDirectory(), &files, "iso:cso:chd:zip:7z:rar");
+	for (const File::FileInfo &file : files) {
+		if (file.isDirectory) {
+			continue;
+		}
+		const LCSDiscCheck check = CheckDisc(file.fullName);
+		if (check.ok) {
+			return file.fullName;
+		}
+		if (finding && finding->empty()) {
+			*finding = WrongDiscText(file.name, check);
+		}
+	}
+	return Path();
+}
+
+UIScreen *CreateStartScreen(const Path &bootFile) {
+	// Asked before anything has booted, so nothing of LCS's has been read yet.
+	LCS::LoadSettings();
+	if (!bootFile.empty()) {
+		const LCSDiscCheck check = CheckDisc(bootFile);
+		if (check.ok) {
+			return new EmuScreen(bootFile);
+		}
+		return new LCSNoDiscScreen(WrongDiscText(bootFile.GetFilename(), check));
+	}
+	// Straight onto the disc booted last: the game's own logos and credits come first, and the menu
+	// at the far end of them is the game's (and this fork's over it).
+	const std::string remembered = LCS::GamePath();
+	if (!remembered.empty() && File::Exists(Path(remembered)) && CheckDisc(Path(remembered)).ok) {
+		return new EmuScreen(Path(remembered));
+	}
+	std::string finding;
+	const Path beside = DiscBesideGame(&finding);
+	if (!beside.empty()) {
+		return new EmuScreen(beside);
+	}
+	return new LCSNoDiscScreen(finding);
+}
+
+LCSNoDiscScreen::LCSNoDiscScreen(std::string finding) : finding_(std::move(finding)), art_(new LCSMenuArt()) {}
+
+LCSNoDiscScreen::~LCSNoDiscScreen() {}
+
+void LCSNoDiscScreen::deviceLost() {
+	art_->Release();
+	art_->deviceLost = true;
+	UIScreen::deviceLost();
+}
+
+void LCSNoDiscScreen::deviceRestored(Draw::DrawContext *draw) {
+	art_->deviceLost = false;
+	UIScreen::deviceRestored(draw);
+}
+
+void LCSNoDiscScreen::Boot(const Path &path) {
+	const LCSDiscCheck check = CheckDisc(path);
+	if (!check.ok) {
+		finding_ = WrongDiscText(path.GetFilename(), check);
+		return;
+	}
+	screenManager()->switchScreen(new EmuScreen(path));
+}
+
+void LCSNoDiscScreen::sendMessage(UIMessage message, const char *value) {
+	UIScreen::sendMessage(message, value);
+	// Back at the front: a disc may have been put beside the game meanwhile.
+	if (message == UIMessage::APP_RESUMED || message == UIMessage::GOT_FOCUS) {
+		std::string finding;
+		const Path beside = DiscBesideGame(&finding);
+		if (!beside.empty()) {
+			Boot(beside);
+		} else if (!finding.empty()) {
+			finding_ = finding;
+		}
+	}
+}
+
+void LCSNoDiscScreen::CreateViews() {
+	using namespace UI;
+	root_ = new AnchorLayout(new LayoutParams(FILL_PARENT, FILL_PARENT));
+	LinearLayout *list = new LinearLayout(ORIENT_VERTICAL, new AnchorLayoutParams(FILL_PARENT, WRAP_CONTENT, 0.0f, NONE, 0.0f, kBottomBarHeight + 40.0f));
+	list->SetSpacing(0.0f);
+	root_->Add(list);
+	choose_ = list->Add(new LCSMenuItem("CHOOSE DISC", new LinearLayoutParams(FILL_PARENT, kRowHeight)));
+	choose_->SetHelp("Find your copy of the game anywhere on this computer.");
+	choose_->OnClick.Add([this](UI::EventParams &e) {
+		System_BrowseForFile(GetRequesterToken(), "Choose your Liberty City Stories disc", BrowseFileType::BOOTABLE,
+			[this](std::string_view value, int) {
+				if (!value.empty()) {
+					Boot(Path(std::string(value)));
+				}
+			});
+	});
+	LCSMenuItem *quit = list->Add(new LCSMenuItem("QUIT", new LinearLayoutParams(FILL_PARENT, kRowHeight)));
+	quit->SetHelp("Close the game.");
+	quit->OnClick.Add([](UI::EventParams &e) {
+		System_ExitApp();
+	});
+	UI::SetFocusedView(choose_, UI::FocusFlags::CAUSE_SCREEN_CHANGE, true);
+}
+
+void LCSNoDiscScreen::DrawBackground(UIContext &dc) {
+	const Bounds &bounds = dc.GetBounds();
+	dc.FillRect(UI::Drawable(kBackgroundColor), bounds);
+	if (Draw::Texture *backdrop = art_->Image(dc, "lcs/background.png")) {
+		DrawTexture(dc, backdrop, Bounds(bounds.x, bounds.y, bounds.w, bounds.h - kBottomBarHeight), 0xFFFFFFFF);
+	}
+	dc.SetFontStyle(kTitleFont);
+	dc.DrawTextShadow(finding_.empty() ? "no disc" : "not this disc", kTitleLeft, kTitleTop + kTitleHeight * 0.5f, kTitleColor,
+		ALIGN_VCENTER | ALIGN_LEFT);
+	std::string body;
+	if (!finding_.empty()) {
+		body = finding_ + "\n\n";
+	}
+	body += "Put your copy of Grand Theft Auto: Liberty City Stories - the USA disc, ULUS10041 version 3.00, as a "
+		".iso or .cso - into this folder, next to the game, and it starts by itself.\n\n"
+		"Or choose one from anywhere on this computer below.";
+	dc.SetFontStyle(kConfirmFont);
+	dc.DrawTextShadowRect(body, Bounds(kTitleLeft, kTitleTop + kTitleHeight + 8.0f, bounds.w - kTitleLeft * 2.0f, 300.0f),
+		kHintColor, ALIGN_TOP | ALIGN_LEFT | FLAG_WRAP_TEXT);
+
+	const Bounds bar(bounds.x, bounds.y2() - kBottomBarHeight, bounds.w, kBottomBarHeight);
+	dc.FillRect(UI::Drawable(kBarColor), bar);
+	dc.FillRect(UI::Drawable(kBarEdgeColor), Bounds(bar.x, bar.y, bar.w, 2.0f));
+	dc.SetFontStyle(dc.GetTheme().uiFontSmall);
+	dc.DrawText("ENTER / LMB - SELECT", bar.x2() - kTitleLeft, bar.centerY(), kHintColor, ALIGN_VCENTER | ALIGN_RIGHT);
+	dc.Flush();
 }
 
 UIScreen *CreatePauseScreen(const Path &gamePath, bool bootPending) {

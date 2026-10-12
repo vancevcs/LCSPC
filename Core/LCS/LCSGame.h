@@ -54,6 +54,12 @@ void Tick();
 void OnFrameBoundary(u32 returnAddress);
 
 bool IsActive();
+// The release presents as the game, not an emulator: no PPSSPP logo, menu bar, ImGui debugger or log
+// file, the game's name on the window, and the start screen that finds the disc. A Debug build, or a
+// Release exe with workshop.txt beside it (the repository's root has one), is the workshop and keeps
+// all of it. Asks nothing of a disc or of lcs.ini, so it is answered the same from the first moment
+// of the first run. Any thread.
+bool PresentAsGame();
 // From ISOFileSystem::ReadFile, after a read of the disc at positionOnIso: a file on the memory stick
 // overwrites the part of the buffer that falls in its range (kLCSDiscPatches). No-op for any other game.
 void PatchDiscRead(u64 positionOnIso, u8 *data, size_t bytes);

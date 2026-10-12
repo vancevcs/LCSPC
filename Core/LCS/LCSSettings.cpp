@@ -463,6 +463,26 @@ void LoadSettings() {
 		g_settings.vehicleChaseCamera ? "true" : "false", g_settings.footChaseCamera ? "true" : "false");
 }
 
+std::string GamePath() {
+	IniFile ini;
+	std::string path;
+	if (ini.Load(SettingsPath())) {
+		if (const Section *section = ini.GetSection("Settings")) {
+			section->Get("GamePath", &path);
+		}
+	}
+	return path;
+}
+
+void SetGamePath(const std::string &path) {
+	IniFile ini;
+	ini.Load(SettingsPath());
+	ini.GetOrCreateSection("Settings")->Set("GamePath", path);
+	if (!ini.Save(SettingsPath())) {
+		ERROR_LOG(Log::System, "LCS: could not write %s", SettingsPath().c_str());
+	}
+}
+
 bool WantsExtraWorldMemory() {
 	IniFile ini;
 	if (!ini.Load(SettingsPath())) {
