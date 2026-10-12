@@ -29,6 +29,7 @@
 #include "Core/HLE/sceKernel.h"
 #include "Core/MemMap.h"
 #include "Core/Reporting.h"
+#include "Core/LCS/LCSGame.h"  // Fork-specific
 
 const int sectorSize = 2048;
 
@@ -577,6 +578,8 @@ size_t ISOFileSystem::ReadFile(u32 handle, u8 *pointer, s64 size, int &usec) {
 		if (e.isBlockSectorMode) {
 			// Whole sectors! Shortcut to this simple code.
 			blockDevice->ReadBlocks(e.seekPos, (int)size, pointer);
+			// Fork-specific: a file on the memory stick may stand in for a range of LCS's disc.
+			LCS::PatchDiscRead((u64)e.seekPos * 2048ULL, pointer, (size_t)size * 2048u);
 			if (abs((int)lastReadBlock_ - (int)e.seekPos) > 100) {
 				// This is an estimate, sometimes it takes 1+ seconds, but it definitely takes time.
 				usec = 100000;
@@ -655,6 +658,8 @@ size_t ISOFileSystem::ReadFile(u32 handle, u8 *pointer, s64 size, int &usec) {
 		}
 
 		size_t totalBytes = pointer - start;
+		// Fork-specific: the same, for reads by offset (LCS opens its files as disc0:/sce_lbn...).
+		LCS::PatchDiscRead(positionOnIso, const_cast<u8 *>(start), totalBytes);
 		if (abs((int)lastReadBlock_ - (int)secNum) > 100) {
 			// This is an estimate, sometimes it takes 1+ seconds, but it definitely takes time.
 			usec = 100000;

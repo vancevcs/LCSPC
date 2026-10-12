@@ -63,6 +63,7 @@ Tools/lcsmenuart.py, lcsmenusfx.py    the menu's backdrop and sounds, from the g
 Tools/lcswad.py, lcshd.py   the Android OBB (container, PVR) and the HD texture pipeline
 Tools/lcstxd.py       texture tool ported from VCS (+ lcsrw, lcsmatch): PC packs + OBB, auto-assign
 Tools/lcstxdweb.py    the OBB's HD textures in the browser pane, manual binds
+Tools/lcsgxtkeys.py   the help text's control tokens rewritten to key names (memstick/PSP/LCS/ENGLISH.GXT)
 
 Seams: init/shutdown in `__KernelInit`/`__KernelShutdown`; fingerprint in `__KernelLoadELFFromPtr`;
 tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys, mouse and pad in `NativeKey` /
@@ -70,7 +71,8 @@ tick in `hleEnterVblank()` (not `__DisplayVblankBeginCallback`); keys, mouse and
 `Core/HLE/ReplaceTables.*`; the memory partition in `InitMemorySizeForGame`; SMAA in
 `DrawEngineVulkan::Flush`; the pause screen in `CreatePauseScreen` (EmuScreen), the curtain and
 the GPS line in `DrawLCSOverlay` (EmuScreen::renderUI); the savedata dialog in
-`LCS::PeekSaveDialog` (sceUtility); the intro's end in `sceIoOpen`; Alt kept from Windows' menu bar
+`LCS::PeekSaveDialog` (sceUtility); the intro's end in `sceIoOpen`; disc patches in
+`ISOFileSystem::ReadFile`; Alt kept from Windows' menu bar
 in `MainWindow`'s `SC_KEYMENU`; compat flag in Core/Compatibility.* + assets/compat.ini. Full
 table: docs/lcs/architecture.md.
 

@@ -54,6 +54,9 @@ void Tick();
 void OnFrameBoundary(u32 returnAddress);
 
 bool IsActive();
+// From ISOFileSystem::ReadFile, after a read of the disc at positionOnIso: a file on the memory stick
+// overwrites the part of the buffer that falls in its range (kLCSDiscPatches). No-op for any other game.
+void PatchDiscRead(u64 positionOnIso, u8 *data, size_t bytes);
 
 // For the debugger window and the log.
 const std::string &GetDiscID();

@@ -486,6 +486,23 @@ inline constexpr float kLCSBriefEntry = 31.0f;        // 20 an entry, 11 more a 
 inline constexpr u32 kLCSPreviousBriefs = 0x08DD1090;
 inline constexpr u32 kLCSPreviousBriefStride = 32;
 inline constexpr int kLCSPreviousBriefCount = 20;
+// Files on the disc a file on the memory stick (PSP/LCS/<file>) stands in for as they are read
+// (LCS::PatchDiscRead). LCS opens its files by sector (disc0:/sce_lbn...), so there is no name to
+// redirect: the position is this disc image's, found by searching it for the file, and the disc must
+// hold `magic` there or the patch stays off for the boot. A replacement is never longer than `length`
+// and is padded to it.
+struct LCSDiscPatch {
+	const char *file;
+	u64 offset;
+	size_t length;
+	const char *magic;
+	size_t magicLen;
+};
+inline constexpr LCSDiscPatch kLCSDiscPatches[] = {
+	// /PSP_GAME/USRDIR/TEXT/ENGLISH.GXT, sector 34288: the tutorial lines name keys (Tools/lcsgxtkeys.py).
+	{ "ENGLISH.GXT", 0x042F8000ull, 526264, "TABL", 4 },
+};
+
 // The file the game opens once per boot, the moment its two intro movies (logos, credits) are over:
 // /PSP_GAME/USRDIR/ENTRIES.DAT, by sector and size as the game asks for it (LCSFrontEnd's boot).
 inline constexpr const char *kLCSIntroOverFile = "disc0:/sce_lbn0x6450_size0x30a8";

@@ -439,6 +439,13 @@ new-game branch (`$6` 0, `0x6e53`) resets these, so a load keeps the saved ones.
 `$211` -1 loaded with the radar hidden, `$1116` 1 and no interior; with 1, inside the Saint Mark's
 house, and its exit marker put the radar back (front-end.md "The auto-save").
 
+### Disc positions - static, from the ISO
+
+`kLCSDiscPatches`: what `LCS::PatchDiscRead` stands in for as the disc is read. ENGLISH.GXT
+(`/PSP_GAME/USRDIR/TEXT/`, 526,264 bytes) at **`0x42f8000`**, sector 34288: found by searching the
+ISO for the whole file's bytes (one match), checked at run time by its `TABL` header. Live: the
+patch's log line on the first read, and the keyboard's names in RAM after the boot.
+
 ### The radar and the area - static, written live
 
 - `display_radar` (`0586`, `0x08a318a8`) writes both **`0x08b5e56c`** (the script's) and

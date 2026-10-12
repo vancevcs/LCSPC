@@ -20,6 +20,8 @@
 #include "Common/Crypto/sha1.h"
 #include "Common/Log.h"
 #include "Common/StringUtils.h"
+#include "Common/File/FileUtil.h"
+#include "Common/File/Path.h"
 #include "Core/Config.h"
 #include "Core/ELF/ParamSFO.h"
 #include "Core/MemMap.h"
@@ -48,6 +50,78 @@ static std::string g_inactiveReason;
 static std::string g_ebootHash;
 static u64 g_tickCount = 0;
 
+// --- Disc patches ---
+//
+// The VCS fork's PatchDiscRead: a file on the memory stick in front of a range of the disc, applied
+// to the buffer as the disc is read, so the ISO is never touched and deleting the file undoes it.
+
+struct DiscPatchState {
+	std::vector<u8> data;  // padded to the patch's length; empty: nothing to apply
+	bool tried = false;
+	bool refused = false;  // the disc didn't hold what was expected at that offset
+};
+static DiscPatchState g_discPatches[ARRAY_SIZE(kLCSDiscPatches)];
+
+static void ResetDiscPatches() {
+	for (DiscPatchState &state : g_discPatches) {
+		state = DiscPatchState();
+	}
+}
+
+static void LoadDiscPatch(const LCSDiscPatch &patch, DiscPatchState &state) {
+	state.tried = true;
+	const Path path = GetSysDirectory(DIRECTORY_PSP) / "LCS" / patch.file;
+	std::string contents;
+	if (!File::ReadBinaryFileToString(path, &contents)) {
+		return;
+	}
+	if (contents.size() > patch.length) {
+		ERROR_LOG(Log::System, "LCS disc patch %s is %d bytes, more than the %d it replaces - ignored",
+			patch.file, (int)contents.size(), (int)patch.length);
+		return;
+	}
+	// Padded, so a read past the replacement's end gets zeroes rather than the disc's own bytes.
+	state.data.assign(patch.length, 0);
+	memcpy(state.data.data(), contents.data(), contents.size());
+	NOTICE_LOG(Log::System, "LCS disc patch: %s (%d bytes) stands in at 0x%llx", patch.file,
+		(int)contents.size(), (unsigned long long)patch.offset);
+}
+
+void PatchDiscRead(u64 positionOnIso, u8 *data, size_t bytes) {
+	if (!g_active || bytes == 0) {
+		return;
+	}
+	for (size_t i = 0; i < ARRAY_SIZE(kLCSDiscPatches); i++) {
+		const LCSDiscPatch &patch = kLCSDiscPatches[i];
+		const u64 patchEnd = patch.offset + patch.length;
+		if (positionOnIso >= patchEnd || positionOnIso + bytes <= patch.offset) {
+			continue;
+		}
+		DiscPatchState &state = g_discPatches[i];
+		if (state.refused) {
+			continue;
+		}
+		if (!state.tried) {
+			LoadDiscPatch(patch, state);
+		}
+		if (state.data.empty()) {
+			continue;
+		}
+		// The disc is checked on the first read that shows the file's header: another image, another
+		// layout, and the right amount to do is nothing.
+		if (positionOnIso <= patch.offset && positionOnIso + bytes >= patch.offset + patch.magicLen &&
+				memcmp(data + (patch.offset - positionOnIso), patch.magic, patch.magicLen) != 0) {
+			state.refused = true;
+			ERROR_LOG(Log::System, "LCS disc patch %s: 0x%llx doesn't hold '%s' on this disc - not patching",
+				patch.file, (unsigned long long)patch.offset, patch.magic);
+			continue;
+		}
+		const u64 from = std::max(positionOnIso, patch.offset);
+		const u64 to = std::min(positionOnIso + bytes, patchEnd);
+		memcpy(data + (from - positionOnIso), state.data.data() + (from - patch.offset), (size_t)(to - from));
+	}
+}
+
 static void Deactivate(const std::string &reason) {
 	g_active = false;
 	g_candidate = false;
@@ -65,6 +139,7 @@ void Init() {
 	FrameRateReset();
 	ResetInput();
 	FrontEndReset();
+	ResetDiscPatches();
 
 	g_discID = g_paramSFO.GetDiscID();
 	g_discVersion = g_paramSFO.GetValueString("DISC_VERSION");
@@ -141,6 +216,7 @@ void Shutdown() {
 	g_active = false;
 	g_baseChecked = false;
 	g_tickCount = 0;
+	ResetDiscPatches();
 }
 
 void Tick() {

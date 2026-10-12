@@ -199,6 +199,40 @@ turned the camera 2.1 rad a second. In the car RT Cross, LT Square, X R, A Down,
 stick at -128, RB L with +126, both L with the stick down, B Circle, Y Triangle. Start opened this
 menu and closed it again. Not tried on a real pad: no pad is on this desk.
 
+## The help text names keys
+
+The tutorial lines name no button: they carry a token ("Press ~k~ ~PDSPR~ while running"), resolved
+through `C<configuration><token>` in MAIN ("C2PDSPR" reads "~X~"). So the control vocabulary of the
+whole game is 36 strings per configuration, and `Tools/lcsgxtkeys.py` (the VCS fork's
+vcsgxtkeys.py, on LCS's text) rewrites them to this fork's keys, the same in C0..C3 (the layer
+holds C2, and a player on another would see PSP buttons again). Its mapping is hand-written
+against `kKeyMappings`: change a binding, change it there; `--report` lists what is unmapped.
+
+- Every line using a token was read before its name was chosen. Lock on is named RIGHT MOUSE (the
+  aim: free aim with a gun, the scope with a sniper rifle); the zooms "the mouse wheel"; a bike's
+  lean "the UP and DOWN arrows".
+- Four lines are rewritten whole, because two PSP controls are one on a mouse: looking around on
+  foot (L and the stick), the scope's fine aim, and the two zoom lines ("Use the mouse wheel to
+  zoom in and out").
+- An article in front of a token goes, by rule: "Press the ~PDFW~" was "Press the LEFT MOUSE".
+- The writer's `--verify` rebuilds the file unchanged byte for byte (526,264 bytes, 91 tables), the
+  check that caught two wrong guesses in VCS (strings aren't pooled; TKEY is ordered by key, TDAT
+  isn't).
+
+**Delivered at read time.** LCS opens its files by sector (`disc0:/sce_lbn...`), so there is no name
+to redirect, and the ISO isn't touched: `LCS::PatchDiscRead`, called by `ISOFileSystem::ReadFile`
+on both its read paths, overwrites whatever part of a read falls inside a patched range from a file
+in `memstick/PSP/LCS/` (`kLCSDiscPatches`: ENGLISH.GXT at `0x42f8000`, sector 34288, found by
+searching the ISO for the file's bytes). The disc is checked for the file's header (`TABL`) on the
+first read that shows it, and a mismatch turns the patch off for the boot. The patched file is
+524,008 bytes, padded to the original's length. It is generated, not in git (it is the game's own
+text); the release ships it.
+
+Measured both ways, booting into the save: with the file, "LEFT SHIFT" 15 times in RAM, "RIGHT
+MOUSE" 4 and "analog stick left and analog stick right" none, and the log's "stands in at
+0x42f8000"; with it moved aside, none of the keys' names and the PSP's line 10 times. Not read on
+screen. The other languages keep the PSP's names.
+
 ## The game's own menu
 
 With the pause menu up the context is Menu (above). On a page this fork's menu opened (MAP, BRIEF,
@@ -297,5 +331,4 @@ Three traps:
 - The pad on real hardware (only the pipe's XInput pad was measured), and a PlayStation pad's
   number translation, read off PPSSPP's HID driver as in VCS.
 - Direct weapon selection by number.
-- The help text still names PSP buttons; VCS rewrote its GXT tokens to key names
-  (`Tools/vcsgxtkeys.py` in the VCS fork). The token table above is where that starts.
+- The help text for a pad player: it names the keyboard's keys (as VCS's does).
