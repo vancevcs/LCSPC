@@ -92,10 +92,19 @@ TextDrawerCocoa::TextDrawerCocoa(Draw::DrawContext *draw) : TextDrawer(draw) {
 			// Convert C++ string to NSString
 			NSString *fontFileName = [NSString stringWithUTF8String:fontName.c_str()];
 
+			// Fork-specific: a font in a folder under assets ("lcs/pricedown") is looked up in that
+			// folder. NSBundle takes no path in a resource's name, and finds nothing given one.
+			NSString *subdirectory = @"assets";
+			NSRange slash = [fontFileName rangeOfString:@"/" options:NSBackwardsSearch];
+			if (slash.location != NSNotFound) {
+				subdirectory = [subdirectory stringByAppendingPathComponent:[fontFileName substringToIndex:slash.location]];
+				fontFileName = [fontFileName substringFromIndex:slash.location + 1];
+			}
+
 			// Get the font URL from the bundle
 			NSURL *fontURL = [PPSSPP_FONT_BUNDLE URLForResource:fontFileName
 													withExtension:@"ttf"
-													subdirectory:@"assets"];
+													subdirectory:subdirectory];
 			if (!fontURL) {
 				NSLog(@"Font URL not found for %@", fontFileName);
 				continue;

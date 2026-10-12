@@ -72,3 +72,37 @@ being one person's choice. 861 files, 86 MB.
 
 No `installed.txt` and no `workshop.txt` may be in it, and the script checks: the first would send
 the memory stick to Documents, the second would make it the workshop.
+
+## macOS
+
+The VCS fork's Mac build. `./b-macos.sh` builds on Apple Silicon without Homebrew: cmake and ninja
+from PyPI into `.venv`, SDL3 and SDL3_ttf from their release tags into `.deps`, pinned to macOS 11.
+It configures with `USE_SYSTEM_LIBPNG=OFF` and fontconfig disabled: with Homebrew installed, CMake
+otherwise links both by their `/opt/homebrew` paths, and the app starts on the builder's Mac and on
+no other.
+
+Run on a Mac, `python3 Tools/lcspackage.py --zip` stages `dist/GTA.Liberty.City.Stories.Mac`: the
+Windows folder with `GTA Liberty City Stories.app` where the exe was. The bundle is PPSSPP's,
+re-dressed by the script (the build files stay upstream's): renamed, given `lcs.ico` as its icon,
+stripped of PPSSPP's claim on .iso/.cso/.pbp files and of the linker's debug map (this machine's
+paths), carrying its own SDL, and signed ad hoc. The script refuses a binary that links anything
+outside macOS and the bundle. The README says how to get past Gatekeeper ("Open Anyway").
+
+In the code, each a few lines:
+
+| what | where |
+|---|---|
+| `LCS::GameFolder()`: the folder holding the .app (the exe's folder elsewhere), resolved past App Translocation; workshop.txt and a disc are looked for there | Core/LCS/LCSGame.cpp, UI/LCSMenuScreen.cpp |
+| a `memstick` beside the app is the memory stick, as one beside the exe is on Windows | UI/NativeApp.cpp |
+| the window titled as the game, and the bundle's icon left in the Dock | SDL/SDLMain.cpp |
+| `assets/lcs` in the bundle (upstream lists the assets a bundle gets; Windows copies the folder) | CMakeLists.txt `NativeAssets` |
+| the menu's face found: NSBundle takes no path in a resource name, so `lcs/pricedown` is looked up in `assets/lcs` | Common/Render/Text/draw_text_cocoa.mm |
+
+The memory stick isn't in git. The first Mac package took it from the Windows release's zip, which
+is the sanitised copy this script makes.
+
+Measured on the unzipped package, launched through `open` (working directory `/`, as from Finder):
+Vulkan through the bundled MoltenVK on an M1, the window titled "Grand Theft Auto: Liberty City
+Stories", the start screen in Pricedown over the backdrop, "no disc" with nothing beside the app and
+"junk.iso isn't a PSP disc image" with a file of zeroes there, settings written into the `memstick`
+beside the app, and a clean quit. Not yet run with the disc.

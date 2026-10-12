@@ -17,6 +17,23 @@
 
 #include <cstring>
 
+#include "ppsspp_config.h"
+
+#if PPSSPP_PLATFORM(MAC)
+#include <dlfcn.h>
+#include <limits.h>
+
+// The four CoreFoundation calls GameFolder needs, declared by hand (the VCS fork's): the real header
+// brings MacTypes with it, and names like Point and Rect with that.
+extern "C" {
+typedef const struct __CFURL *CFURLRef;
+typedef const struct __CFAllocator *CFAllocatorRef;
+CFURLRef CFURLCreateFromFileSystemRepresentation(CFAllocatorRef allocator, const unsigned char *buffer, long bufLen, unsigned char isDirectory);
+unsigned char CFURLGetFileSystemRepresentation(CFURLRef url, unsigned char resolveAgainstBase, unsigned char *buffer, long maxBufLen);
+void CFRelease(const void *cf);
+}
+#endif
+
 #include "Common/Crypto/sha1.h"
 #include "Common/Log.h"
 #include "Common/StringUtils.h"
@@ -262,11 +279,72 @@ bool IsActive() {
 	return g_active;
 }
 
+#if PPSSPP_PLATFORM(MAC)
+// Where the bundle really is, when macOS runs it from somewhere else. A quarantined app that has not
+// been moved since it was unzipped (every download without a Developer ID signature) runs from a
+// randomised read-only copy under /private/var/folders, and the folder beside THAT holds nothing.
+// Security.framework names the original; the two calls are looked up at run time because they are
+// not in the public headers, and without them the path stands.
+static std::string UntranslocatedPath(const std::string &path) {
+	void *security = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_LAZY | RTLD_LOCAL);
+	if (!security) {
+		return path;
+	}
+	using IsTranslocatedFn = unsigned char (*)(CFURLRef, bool *, void *);
+	using OriginalPathFn = CFURLRef (*)(CFURLRef, void *);
+	const auto isTranslocated = (IsTranslocatedFn)dlsym(security, "SecTranslocateIsTranslocatedURL");
+	const auto originalPath = (OriginalPathFn)dlsym(security, "SecTranslocateCreateOriginalPathForURL");
+
+	std::string result = path;
+	CFURLRef url = CFURLCreateFromFileSystemRepresentation(nullptr, (const unsigned char *)path.c_str(), (long)path.size(), true);
+	bool translocated = false;
+	if (url && isTranslocated && originalPath && isTranslocated(url, &translocated, nullptr) && translocated) {
+		if (CFURLRef original = originalPath(url, nullptr)) {
+			char buffer[PATH_MAX];
+			if (CFURLGetFileSystemRepresentation(original, true, (unsigned char *)buffer, sizeof(buffer))) {
+				result = buffer;
+			}
+			CFRelease(original);
+		}
+	}
+	if (url) {
+		CFRelease(url);
+	}
+	dlclose(security);
+	return result;
+}
+#endif
+
+const Path &GameFolder() {
+	static Path folder;
+	if (!folder.empty()) {
+		return folder;
+	}
+	folder = File::GetExeDirectory();
+#if PPSSPP_PLATFORM(MAC)
+	// .../Name.app/Contents/MacOS, up to the bundle and then out of it. A bare executable is left
+	// where it is.
+	std::string exe = folder.ToString();
+	while (!exe.empty() && exe.back() == '/') {
+		exe.pop_back();
+	}
+	const std::string inBundle = ".app/Contents/MacOS";
+	if (exe.size() > inBundle.size() && exe.compare(exe.size() - inBundle.size(), inBundle.size(), inBundle) == 0) {
+		const std::string bundle = UntranslocatedPath(exe.substr(0, exe.size() - strlen("/Contents/MacOS")));
+		const size_t slash = bundle.rfind('/');
+		if (slash != std::string::npos && slash > 0) {
+			folder = Path(bundle.substr(0, slash));
+		}
+	}
+#endif
+	return folder;
+}
+
 bool PresentAsGame() {
 #ifdef _DEBUG
 	return false;
 #else
-	static const bool game = !File::Exists(File::GetExeDirectory() / "workshop.txt");
+	static const bool game = !File::Exists(GameFolder() / "workshop.txt");
 	return game;
 #endif
 }

@@ -1549,9 +1549,10 @@ static std::string WrongDiscText(const std::string &name, const LCSDiscCheck &ch
 // A disc of this build's beside the game, or nothing. *finding says what else was there, for the screen.
 static Path DiscBesideGame(std::string *finding) {
 	std::vector<File::FileInfo> files;
-	File::GetFilesInDir(File::GetExeDirectory(), &files, "iso:cso:chd:zip:7z:rar");
+	File::GetFilesInDir(LCS::GameFolder(), &files, "iso:cso:chd:zip:7z:rar");
 	for (const File::FileInfo &file : files) {
-		if (file.isDirectory) {
+		// GetFilesInDir lets a file with no extension past any filter (on macOS, a bare executable).
+		if (file.isDirectory || file.fullName.GetFileExtension().empty()) {
 			continue;
 		}
 		const LCSDiscCheck check = CheckDisc(file.fullName);

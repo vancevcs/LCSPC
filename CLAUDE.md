@@ -30,6 +30,8 @@ entries.
 - `MSBuild Windows/PPSSPP.sln /t:PPSSPPWindows /p:Configuration=Release /p:Platform=x64 /m`
   (MSBuild via vswhere - AGENTS.md "Build and validation"). Exes land in the repo root. Check the
   exe's timestamp before trusting a measurement.
+- Mac: `./b-macos.sh` (no Homebrew; the app is build/PPSSPPSDL.app), then
+  `python3 Tools/lcspackage.py --zip` (docs/lcs/release.md "macOS").
 - New source file: the seven build files listed in docs/lcs/architecture.md.
 - Live debugging: `--debugger=1337`; breakpoints need `CPUCore = 0`.
 - Logging: `NOTICE_LOG` for anything read back from a run; WARN is dropped at level 2.

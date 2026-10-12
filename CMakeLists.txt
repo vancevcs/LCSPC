@@ -3,6 +3,12 @@ cmake_minimum_required(VERSION 3.16)
 project(PPSSPP)
 enable_testing()
 
+# Fork-specific: source paths relative to the checkout. __FILE__ is in every assert and log call,
+# so without this a published binary carries the full path of the folder it was built in.
+if(NOT MSVC)
+	add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}/=")
+endif()
+
 #This is supposed to work but doesn't!
 if(NOT ANDROID)
 	set(CMAKE_CXX_STANDARD 17)
@@ -1269,6 +1275,8 @@ set(NativeAssets
 	assets/lang
 	assets/shaders
 	assets/themes
+	# Fork-specific: the LCS front end's backdrop, sounds and face (Windows copies all of assets/).
+	assets/lcs
 	assets/Roboto_Condensed-Regular.ttf
 	assets/Roboto_Condensed-Light.ttf
 	assets/Roboto_Condensed-Bold.ttf

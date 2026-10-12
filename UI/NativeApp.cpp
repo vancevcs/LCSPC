@@ -651,6 +651,11 @@ void NativeInit(int argc, const char *argv[], const CommandLineOptions &cmdLineO
 	g_Config.memStickDirectory = DarwinFileSystemServices::appropriateMemoryStickDirectoryToUse();
 #elif PPSSPP_PLATFORM(MAC)
 	g_Config.memStickDirectory = DarwinFileSystemServices::appropriateMemoryStickDirectoryToUse();
+	// Fork-specific: a memstick folder beside the app is the memory stick, as one beside the exe is on
+	// Windows (the packaged layout). A build with none beside it keeps PPSSPP's default.
+	if (File::Exists(LCS::GameFolder() / "memstick") && File::IsDirectory(LCS::GameFolder() / "memstick")) {
+		g_Config.memStickDirectory = LCS::GameFolder() / "memstick";
+	}
 #elif PPSSPP_PLATFORM(SWITCH)
 	g_Config.memStickDirectory = g_Config.internalDataDirectory / "config/ppsspp";
 #elif PPSSPP_PLATFORM(WINDOWS)

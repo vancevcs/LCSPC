@@ -21,6 +21,7 @@
 #include <string>
 
 #include "Common/CommonTypes.h"
+#include "Common/File/Path.h"
 
 // Lifecycle and per-frame driver for the GTA: Liberty City Stories layer. The only part of
 // Core/LCS the rest of PPSSPP calls:
@@ -60,6 +61,10 @@ bool IsActive();
 // all of it. Asks nothing of a disc or of lcs.ini, so it is answered the same from the first moment
 // of the first run. Any thread.
 bool PresentAsGame();
+// The folder the player put the game in: where workshop.txt, a disc and the memory stick are looked
+// for. The exe's own folder on Windows; on macOS the executable sits inside its .app bundle, and this
+// is the folder holding the bundle.
+const Path &GameFolder();
 // From ISOFileSystem::ReadFile, after a read of the disc at positionOnIso: a file on the memory stick
 // overwrites the part of the buffer that falls in its range (kLCSDiscPatches). No-op for any other game.
 void PatchDiscRead(u64 positionOnIso, u8 *data, size_t bytes);
