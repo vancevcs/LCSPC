@@ -1443,6 +1443,11 @@ void EmuScreen::update() {
 		if (UIScreen *pause = CreatePauseScreen(gamePath_, bootPending_))
 			screenManager()->push(pause);
 	}
+	// Fork-specific: a safe house's save icon put up the firmware's save list; LCS's SAVE GAME page goes over it.
+	if (screenManager()->topScreen() == this) {
+		if (UIScreen *save = TakeIconSaveScreen(gamePath_, bootPending_))
+			screenManager()->push(save);
+	}
 
 	if (!PSP_IsInited())
 		return;

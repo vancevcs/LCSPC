@@ -56,6 +56,9 @@ enum class LCSMenuPage {
 	Game,
 	LoadGame,
 	DeleteGame,
+	// Only over the firmware's save list, when a safe house's save icon opened it (LCS::TakeIconSave).
+	// Not reachable from the root: saving is something you do in the world.
+	SaveGame,
 	Confirm,
 	Bindings,
 	KeysOnFoot,
@@ -165,6 +168,12 @@ private:
 	LCSMenuPage ParentPage(LCSMenuPage page) const;
 	const char *PageTitle(LCSMenuPage page) const;
 	bool GoBack();
+	void CancelIconSave();
+
+public:
+	void OpenForIconSave();
+
+private:
 	void GoToConfirm(const char *title, std::string question, std::string detail,
 		std::function<void()> action);
 
@@ -181,6 +190,7 @@ private:
 	void AddBackRow(UI::ViewGroup *parent);
 	void AddOptionRows(UI::ViewGroup *parent, LCSMenuPage page);
 	void AddSaveRows(UI::ViewGroup *parent, bool deleting);
+	void AddSaveSlotRows(UI::ViewGroup *parent);
 	void AddBindingRows(UI::ViewGroup *parent, LCSMenuPage page);
 	void AddCheatRows(UI::ViewGroup *parent, LCSMenuPage page);
 	void FitRows(UI::LinearLayout *list);
@@ -210,6 +220,10 @@ private:
 	int pendingLoad_ = -1;
 	int pendingDelete_ = -1;
 	bool pendingNewGame_ = false;
+	// The save icon's page: open for it, answered, and the slot its question's YES chose.
+	bool iconSave_ = false;
+	bool iconSaveAnswered_ = false;
+	int pendingSaveSlot_ = -1;
 
 	std::vector<LCSMenuItem *> rows_;
 	std::vector<LCSBindingRow *> bindingRows_;
@@ -233,6 +247,9 @@ UIScreen *CreatePauseScreen(const Path &gamePath, bool bootPending);
 // True once when this menu should come back: Back from one of the game's pages it opened, after the
 // page has gone. EmuScreen::update asks every frame.
 bool LCSMenuDue();
+// This menu on its SAVE GAME page, once, when a safe house's save icon put up the firmware's save
+// list (LCS::TakeIconSave); null otherwise. EmuScreen::update asks every frame.
+UIScreen *TakeIconSaveScreen(const Path &gamePath, bool bootPending);
 // The LCS front end's curtain (LOADING, SAVING) and the hint line on the game's pages, over the game.
 // From EmuScreen::renderUI; nothing for any other game.
 void DrawLCSOverlay(UIContext &dc);

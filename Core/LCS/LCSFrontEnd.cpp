@@ -148,6 +148,23 @@ bool g_stepPressed = false;
 bool g_sawDialog = false;
 bool g_saveIsAuto = false;
 
+// --- The save icon ---
+//
+// A safe house's save icon runs the game's own save routine, which puts up the firmware's slot list:
+// PPSSPP's own browser in PPSSPP's own look. A save list up with nothing of ours running can only be
+// that one, so the tick asks the UI for this fork's SAVE GAME page over it (TakeIconSave) and the
+// page answers (AnswerIconSave): a slot, walked to as the auto-save walks to its own, or -1, the
+// dialog's own Back until it is gone. The script made the save ready itself, so nothing of
+// PrepareScriptForSave runs. The VCS fork's design (its boot-and-saves.md, "The save icon").
+constexpr int kIconSaveNone = -2;
+std::atomic<bool> g_iconSaveAsk{false};
+std::atomic<int> g_iconSaveAnswer{kIconSaveNone};
+bool g_iconSaveOpen = false;
+// The slot a save the player chose goes to; -1 is the auto-save's own, the list's last.
+int g_saveSlot = -1;
+// Back at whatever the dialog shows until it has gone.
+bool g_dialogCancel = false;
+
 // The press in flight, and the last one made.
 u32 g_mask = 0;
 u32 g_lastPress = 0;
@@ -542,6 +559,8 @@ void GoIdle(const char *why) {
 	g_pressGap = 0;
 	g_busy.store(false, std::memory_order_relaxed);
 	RestoreScriptAfterSave();
+	g_saveSlot = -1;
+	g_dialogCancel = false;
 	// The curtain's own countdown takes it from here.
 	g_curtainSequenceDone = true;
 }
@@ -830,6 +849,12 @@ void DialogTick(const FeState &fe) {
 		g_sawDialog = true;
 		g_waited = 0;
 	}
+	if (g_dialogCancel) {
+		if (!peek.busy) {
+			Press(peek.cancelButton ? peek.cancelButton : (u32)CTRL_CIRCLE);
+		}
+		return;
+	}
 	if (g_waited > kDialogTimeout) {
 		// Up, but not moving through anything this knows how to answer: it is the player's now.
 		GoIdle("save dialog not answered");
@@ -845,7 +870,16 @@ void DialogTick(const FeState &fe) {
 
 	if (peek.list) {
 		int want = -1;
-		if (peek.save) {
+		if (peek.save && g_saveSlot >= 0) {
+			// The slot picked on this fork's SAVE GAME page, by name as a load is.
+			char name[16];
+			snprintf(name, sizeof(name), "S%d", g_saveSlot);
+			want = FindName(peek, name);
+			if (want < 0) {
+				Abandon("that slot isn't in the save list", "That save slot isn't in the list", fe);
+				return;
+			}
+		} else if (peek.save) {
 			// The auto-save's own slot: the last the game offers, so it can only ever overwrite
 			// the previous auto-save and the others stay the player's.
 			want = std::min(peek.count, (int)SaveDialogPeek::kMaxNames) - 1;
@@ -1241,6 +1275,46 @@ int AutoSaveSlot() {
 
 // --- Emu thread ---
 
+// The save icon's half on this side. True while it owns the tick: asking, or just answered.
+static bool IconSaveTick(bool dialogUp, const SaveDialogPeek &peek) {
+	if (g_phase != Phase::Idle) {
+		return false;
+	}
+	if (!g_iconSaveOpen) {
+		if (!dialogUp || !peek.save || !peek.list || peek.busy) {
+			return false;
+		}
+		g_iconSaveOpen = true;
+		g_iconSaveAnswer.store(kIconSaveNone, std::memory_order_relaxed);
+		g_iconSaveAsk.store(true, std::memory_order_relaxed);
+		g_status = "save icon - asking for a slot";
+		NOTICE_LOG(Log::System, "LCS front end: the game's save list is up - SAVE GAME asks for a slot");
+		return true;
+	}
+	const int answer = g_iconSaveAnswer.exchange(kIconSaveNone, std::memory_order_relaxed);
+	if (answer != kIconSaveNone) {
+		g_iconSaveOpen = false;
+		g_iconSaveAsk.store(false, std::memory_order_relaxed);
+		Begin(Req::Save, Phase::Dialog);
+		g_saveIsAuto = false;
+		g_saveSlot = answer;
+		g_dialogCancel = answer < 0;
+		RaiseCurtain(answer >= 0 ? CurtainKind::Saving : CurtainKind::Menu);
+		if (answer >= 0) {
+			NOTICE_LOG(Log::System, "LCS front end: saving to slot %d", answer);
+		} else {
+			NOTICE_LOG(Log::System, "LCS front end: save cancelled, backing out of the list");
+		}
+		return true;
+	}
+	// Still asking. A list that went away by itself in the meantime leaves nothing to answer.
+	if (!dialogUp) {
+		g_iconSaveOpen = false;
+		g_iconSaveAsk.store(false, std::memory_order_relaxed);
+	}
+	return true;
+}
+
 void FrontEndTick() {
 	const LCSState &state = GetState();
 	const FeState fe = ReadFe();
@@ -1278,6 +1352,9 @@ void FrontEndTick() {
 		return;
 	}
 	g_waited++;
+	if (IconSaveTick(g_dialogUp.load(std::memory_order_relaxed), peek)) {
+		return;
+	}
 	TakeRequest(state, fe);
 	if (!fe.valid && g_phase != Phase::Idle) {
 		Abandon("the front end can't be read", nullptr, fe);
@@ -1310,6 +1387,17 @@ u32 FrontEndButtonMask() {
 
 void FrontEndFrameBoundary() {
 	SaveHouseFrameBoundary();
+}
+
+bool TakeIconSave() {
+	return g_iconSaveAsk.exchange(false, std::memory_order_relaxed);
+}
+
+void AnswerIconSave(int slot) {
+	// The curtain goes up with the answer, from here, so the frame between this fork's menu going
+	// and the walk starting doesn't show the firmware's list.
+	g_curtain.store((int)(slot >= 0 ? CurtainKind::Saving : CurtainKind::Menu), std::memory_order_relaxed);
+	g_iconSaveAnswer.store(slot >= 0 ? slot : -1, std::memory_order_relaxed);
 }
 
 bool IntroPlaying() {
@@ -1418,6 +1506,11 @@ void FrontEndReset() {
 	g_savePrepared = false;
 	g_saveHousePending = false;
 	g_saveHouseWritten = false;
+	g_iconSaveOpen = false;
+	g_iconSaveAsk.store(false, std::memory_order_relaxed);
+	g_iconSaveAnswer.store(kIconSaveNone, std::memory_order_relaxed);
+	g_saveSlot = -1;
+	g_dialogCancel = false;
 	g_introOver = false;
 	g_introMask = 0;
 	g_introSkipLeft = 0;

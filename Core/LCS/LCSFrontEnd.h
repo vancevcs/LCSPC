@@ -91,6 +91,11 @@ bool TakeMenuAfterClose();
 // The save slot the auto-save writes (the game's last), or -1 before the save list was seen.
 int AutoSaveSlot();
 
+// The save icon: the game's own save list is up with nothing of ours running. True once; the UI
+// puts this fork's SAVE GAME page over it, and answers with a slot 0..7, or -1 for no save.
+bool TakeIconSave();
+void AnswerIconSave(int slot);
+
 // --- Boot: the intro before the world ---
 
 // The game's movies (logos, credits) are playing: from boot until they are over or a world runs.

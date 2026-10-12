@@ -42,5 +42,6 @@ made so far (and the test fixtures) is on 32 MB. Game saves are unaffected.
 
 - Pop-in and streaming hitches while driving fast, with and without it (the instrument VCS used is
   the distribution of frame intervals while streaming; see its `streaming-stutter.md`).
-- `CacheFullIsoInRam`, the host-side half of VCS's streaming-stutter fix, is a stock PPSSPP setting
-  and wasn't measured here either.
+- `CacheFullIsoInRam`, the host-side half of VCS's streaming-stutter fix: a stock PPSSPP setting,
+  on in the shipped ppsspp.ini as VCS ships it (the 1.25 GB ISO is read into RAM at boot). The
+  stutter it fixed in VCS wasn't measured here.

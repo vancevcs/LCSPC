@@ -87,6 +87,8 @@ static constexpr float kValueGap = 100.0f;
 static constexpr int kSliderBlocks = 10;
 // How far left of centre the save list starts.
 static constexpr float kSaveListInset = 240.0f;
+// The slots the game saves to, S0..S7: the firmware's save list offers all eight.
+static constexpr int kSaveSlots = 8;
 
 // Real font sizes rather than a scaled theme font: the text drawer rasterises at the style's size
 // and a scale only stretches the pixels.
@@ -667,6 +669,8 @@ LCSMenuScreen::LCSMenuScreen(const Path &gamePath, bool bootPending)
 }
 
 LCSMenuScreen::~LCSMenuScreen() {
+	// The firmware's list is never left waiting on a page that went away without an answer.
+	CancelIconSave();
 	// Raw mouse deltas kept arriving while this was up, and would turn the camera on resume.
 	LCS::DropPendingMouse();
 	// Every way out comes through here, which is why the save is here rather than on a row.
@@ -703,6 +707,7 @@ LCSMenuPage LCSMenuScreen::ParentPage(LCSMenuPage page) const {
 	case LCSMenuPage::Game: return LCSMenuPage::Root;
 	case LCSMenuPage::LoadGame: return LCSMenuPage::Game;
 	case LCSMenuPage::DeleteGame: return LCSMenuPage::Game;
+	case LCSMenuPage::SaveGame: return LCSMenuPage::Root;
 	// Back out of a question and you are where you asked it from.
 	case LCSMenuPage::Confirm: return confirmParent_;
 	// Cheats hang off the root: they are not a setting, and nothing about them persists.
@@ -774,6 +779,7 @@ const char *LCSMenuScreen::PageTitle(LCSMenuPage page) const {
 	case LCSMenuPage::Game: return "game";
 	case LCSMenuPage::LoadGame: return "load game";
 	case LCSMenuPage::DeleteGame: return "delete game";
+	case LCSMenuPage::SaveGame: return "save game";
 	// Whatever the page that asked was showing, so the heading does not jump.
 	case LCSMenuPage::Confirm: return confirmTitle_;
 	case LCSMenuPage::Bindings: return "key bindings";
@@ -803,8 +809,26 @@ void LCSMenuScreen::GoToPage(LCSMenuPage page) {
 	RecreateViews();
 }
 
+void LCSMenuScreen::OpenForIconSave() {
+	iconSave_ = true;
+	page_ = LCSMenuPage::SaveGame;
+}
+
+void LCSMenuScreen::CancelIconSave() {
+	if (iconSave_ && !iconSaveAnswered_) {
+		iconSaveAnswered_ = true;
+		LCS::AnswerIconSave(-1);
+	}
+}
+
 bool LCSMenuScreen::GoBack() {
 	PlayMenuSound(UI::UISound::LCS_BACK);
+	// Back from the save icon's page is "don't save", and out, not up to a root never come through.
+	if (iconSave_ && page_ == LCSMenuPage::SaveGame) {
+		CancelIconSave();
+		TriggerFinish(DR_CANCEL);
+		return true;
+	}
 	if (page_ != LCSMenuPage::Root) {
 		GoToPage(ParentPage(page_));
 		return true;
@@ -935,6 +959,11 @@ void LCSMenuScreen::AddPlaceholderRow(UI::ViewGroup *parent, const char *label, 
 void LCSMenuScreen::AddBackRow(UI::ViewGroup *parent) {
 	// page_ is read at click time, so one lambda serves every page.
 	AddRow(parent, "BACK")->OnClick.Add([this](UI::EventParams &e) {
+		if (iconSave_ && page_ == LCSMenuPage::SaveGame) {
+			CancelIconSave();
+			TriggerFinish(DR_CANCEL);
+			return;
+		}
 		GoToPage(ParentPage(page_));
 	});
 }
@@ -1005,6 +1034,47 @@ void LCSMenuScreen::AddSaveRows(UI::ViewGroup *parent, bool deleting) {
 	if (slots.empty()) {
 		LCSMenuItem *row = AddRow(parent, "NO SAVES", "Nothing saved on the memory stick yet.");
 		row->SetEnabled(false);
+	}
+	AddBackRow(parent);
+}
+
+// The SAVE GAME page: every slot the game saves to, an empty one included, since it is somewhere to
+// save. Overwriting asks first, on this menu's own question page; the firmware's own prompt on the
+// far side is answered by the walk, so the player is asked once.
+void LCSMenuScreen::AddSaveSlotRows(UI::ViewGroup *parent) {
+	const std::vector<LCSSaveSlot> saves = EnumerateSaves();
+	const int autoSlot = LCS::Settings().autoSaveSlot;
+	for (int index = 0; index < kSaveSlots; index++) {
+		const LCSSaveSlot *slot = nullptr;
+		for (const LCSSaveSlot &save : saves) {
+			if (save.index == index) {
+				slot = &save;
+			}
+		}
+		char label[160];
+		if (slot) {
+			snprintf(label, sizeof(label), "%d.  %s%s", index + 1, slot->title.c_str(), index == autoSlot ? "  (AUTO)" : "");
+		} else {
+			snprintf(label, sizeof(label), "%d.  EMPTY", index + 1);
+		}
+		LCSMenuItem *row = AddRow(parent, label);
+		row->SetLeftAligned(ScreenCenterX() - kSaveListInset);
+		if (slot) {
+			row->SetHelp("Save over " + slot->detail);
+			const std::string title = slot->title;
+			const std::string detail = slot->detail;
+			row->OnClick.Add([this, index, title, detail](UI::EventParams &e) {
+				GoToConfirm("save game", "Are you sure you wish to overwrite this save file?", title + " - " + detail,
+					[this, index]() {
+						pendingSaveSlot_ = index;
+					});
+			});
+		} else {
+			row->SetHelp("Save the game here.");
+			row->OnClick.Add([this, index](UI::EventParams &e) {
+				pendingSaveSlot_ = index;
+			});
+		}
 	}
 	AddBackRow(parent);
 }
@@ -1153,6 +1223,9 @@ void LCSMenuScreen::CreateViews() {
 	case LCSMenuPage::DeleteGame:
 		AddSaveRows(list, true);
 		break;
+	case LCSMenuPage::SaveGame:
+		AddSaveSlotRows(list);
+		break;
 	case LCSMenuPage::Confirm: {
 		// NO first, and focused: the answer to a question nobody has read yet should change nothing.
 		AddRow(list, "NO", "Go back without changing anything.")->OnClick.Add([this](UI::EventParams &e) {
@@ -1237,6 +1310,15 @@ void LCSMenuScreen::update() {
 	if (pendingNewGame_) {
 		pendingNewGame_ = false;
 		LCS::RequestNewGame();
+		TriggerFinish(DR_CANCEL);
+		return;
+	}
+	// The save icon's answer: the walk through the firmware's list needs the game running.
+	if (pendingSaveSlot_ >= 0) {
+		const int slot = pendingSaveSlot_;
+		pendingSaveSlot_ = -1;
+		iconSaveAnswered_ = true;
+		LCS::AnswerIconSave(slot);
 		TriggerFinish(DR_CANCEL);
 		return;
 	}
@@ -1383,6 +1465,15 @@ UIScreen *CreatePauseScreen(const Path &gamePath, bool bootPending) {
 		return nullptr;
 	}
 	return new LCSMenuScreen(gamePath, bootPending);
+}
+
+UIScreen *TakeIconSaveScreen(const Path &gamePath, bool bootPending) {
+	if (!LCS::IsActive() || !LCS::TakeIconSave()) {
+		return nullptr;
+	}
+	LCSMenuScreen *screen = new LCSMenuScreen(gamePath, bootPending);
+	screen->OpenForIconSave();
+	return screen;
 }
 
 bool LCSMenuDue() {

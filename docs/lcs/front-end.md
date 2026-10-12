@@ -134,6 +134,31 @@ All three are this menu's own pages and questions (the game's words: `FESZ_QR`, 
 - **DELETE** removes `ULUS10041S<n>` from the memory stick here. The game lists the stick again every
   time it opens a list, so nothing in the game needs telling.
 
+## The save icon opens this fork's SAVE GAME page
+
+A safe house's save icon runs the game's save routine, which puts up the firmware's slot list:
+PPSSPP's own browser in PPSSPP's own look, the last screen in ordinary play that still looked like
+an emulator. Now this menu goes up over it on a SAVE GAME page, the VCS fork's design: the eight
+slots `S0..S7` as the load page shows them, EMPTY ones included, an occupied one asking "overwrite?"
+on the question page first (the save's own description under it, NO focused). The pick is walked
+through the firmware's list behind SAVING, steered to the slot by name, its overwrite prompt
+answered and "save completed" dismissed: the auto-save's dialog phase with the player's slot
+(`g_saveSlot`). Back, Escape, or any other way out of the page cancels, and the walk presses the
+dialog's own Back until it is gone.
+
+**How it knows the icon opened it:** a firmware SAVE list on screen while the bridge is idle. Every
+sequence of ours that opens that dialog is in a phase of its own by then, so a list with nothing
+running can only be the game's. The tick sets the ask (`LCS::TakeIconSave`), `EmuScreen::update`
+pushes the page (`TakeIconSaveScreen`), and the answer comes back through `LCS::AnswerIconSave`.
+The page's destructor answers "cancel" if nothing else did, so the dialog is never left waiting.
+Nothing of the script's preparation is repeated: the safe house did it before it asked.
+
+Measured, with the list opened by writing the request byte (`+0x46b`) as the script's 03DD does, so
+skipping the safe house's preparation; the saves were copied aside and put back after. The page
+came up over the list with S1 and S8 named and the rest EMPTY; slot 3 picked: `ULUS10041S2` written
+5 s later and the game's menu closed; S3 again: the question page, YES, the file rewritten through
+the firmware's prompt; and Escape: the list backed out of and the game's menu closed.
+
 ## The auto-save
 
 After every story mission, into the game's last save slot (`S7`), so it can only overwrite the
